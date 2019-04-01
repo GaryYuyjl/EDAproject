@@ -1,18 +1,19 @@
 from Util import *
 # father class of all devices
 class SuperDevice:
-    def __init__(self, name, connectionPoints):
+    def __init__(self, name, connectionPoints, _type):
         self.connectionPoints = connectionPoints
         self.NPlus = self.connectionPoints[0]
         self.NMinus = self.connectionPoints[1]
         self.name = name
+        self.type = _type
 
     def load(self):
         pass
 
 class Resistor(SuperDevice):
-    def __init__(self, name, connectionPoints, value):
-        super().__init__(name, connectionPoints)
+    def __init__(self, name, connectionPoints, value, _type):
+        super().__init__(name, connectionPoints, _type)
         self.value = value
     
     # load function will add this device to MNA matrix
@@ -22,10 +23,19 @@ class Resistor(SuperDevice):
         stampMatrix[self.NPlus][self.NMinus] -= 1 / self.value
         stampMatrix[self.NMinus][self.NMinus] += 1 / self.value
         return stampMatrix, RHS, appendLine
+    
+    def loadBEMatrix(self, stampMatrix, RHS, appendLine, step):
+        stampMatrix[self.NPlus][self.NPlus] += 1 / self.value
+        stampMatrix[self.NMinus][self.NPlus] -= 1 / self.value
+        stampMatrix[self.NPlus][self.NMinus] -= 1 / self.value
+        stampMatrix[self.NMinus][self.NMinus] += 1 / self.value
+        return stampMatrix, RHS, appendLine
+    def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+        return RHS
 
 class Capacitor(SuperDevice):
-    def __init__(self, name, connectionPoints, value):
-        super().__init__(name, connectionPoints)
+    def __init__(self, name, connectionPoints, value, _type):
+        super().__init__(name, connectionPoints, _type)
         self.value = value
     
     def load(self, stampMatrix, RHS, appendLine):
@@ -35,9 +45,45 @@ class Capacitor(SuperDevice):
         stampMatrix[self.NMinus][self.NMinus] += self.value * 1j
         return stampMatrix, RHS, appendLine
 
+    def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
+        # print('capacitor', self.value, h, stampMatrix)
+        index = stampMatrix.shape[0]
+        stampMatrix = expandMatrix(stampMatrix, 1)
+
+        stampMatrix[self.NPlus][index] += 1
+        stampMatrix[self.NMinus][index] -= 1
+        stampMatrix[index][self.NPlus] += self.value / h
+        stampMatrix[index][self.NMinus] -= self.value / h
+        stampMatrix[index][index] -= 1
+
+        # # need to update
+        # v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
+        # RHS = np.vstack((RHS, np.array([self.value / h * v_tMinush]))) # add vc
+
+        appendLine[self.name] = index
+        return stampMatrix, RHS, appendLine
+
+    def loadBERHS(self, stampMatrix, RHS, appendLine, h, lastValue):
+        # index = len(RHS)
+        # stampMatrix = expandMatrix(stampMatrix, 1)
+
+        # stampMatrix[self.NPlus][index] += 1
+        # stampMatrix[self.NMinus][index] -= 1
+        # stampMatrix[index][self.NPlus] += self.value / h
+        # stampMatrix[index][self.NMinus] -= self.value / h
+        # stampMatrix[index][index] -= 1
+
+        # print(RHS)
+        # need to update
+        v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
+        add = np.array([[self.value / h * v_tMinush]])
+        RHS = np.vstack((RHS, add)) # add vc
+
+        return RHS
+
 class Inductor(SuperDevice):
-    def __init__(self, name, connectionPoints, value):
-        super().__init__(name, connectionPoints)
+    def __init__(self, name, connectionPoints, value, _type):
+        super().__init__(name, connectionPoints, _type)
         self.value = value
     
     def load(self, stampMatrix, RHS, appendLine):
@@ -54,20 +100,58 @@ class Inductor(SuperDevice):
         appendLine[self.name] = index
         return stampMatrix, RHS, appendLine
 
+    def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
+        index = stampMatrix.shape[0]
+        stampMatrix = expandMatrix(stampMatrix, 1)
+
+        stampMatrix[self.NPlus][index] += 1
+        stampMatrix[self.NMinus][index] -= 1
+        stampMatrix[index][self.NPlus] += 1
+        stampMatrix[index][self.NMinus] -= 1
+        stampMatrix[index][index] -= self.value / h
+
+        # # need to update
+        # v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
+        # RHS = np.vstack((RHS, np.array([self.value / h * v_tMinush]))) # add vc
+
+        appendLine[self.name] = index
+        return stampMatrix, RHS, appendLine
+
+    def loadBERHS(self, stampMatrix, RHS, appendLine, h, lastValue):
+        index = len(RHS)
+
+        # index = stampMatrix.shape[0]
+        # stampMatrix = expandMatrix(stampMatrix, 1)
+
+        # stampMatrix[self.NPlus][index] += 1
+        # stampMatrix[self.NMinus][index] -= 1
+        # stampMatrix[index][self.NPlus] += 1
+        # stampMatrix[index][self.NMinus] -= 1
+        # stampMatrix[index][index] -= self.value / h
+
+        # need to update
+        # lastValue = 0
+        i_tMinush = lastValue[index]
+        RHS = np.vstack((RHS, np.array([[-self.value / h * i_tMinush]]))) # add vc
+
+        return RHS
 
 class ISource(SuperDevice):
-    def __init__(self, name, connectionPoints, value):
-        super().__init__(name, connectionPoints)
+    def __init__(self, name, connectionPoints, value, _type):
+        super().__init__(name, connectionPoints, _type)
         self.value = value
     
     def load(self, stampMatrix, RHS, appendLine):
         RHS[self.NPlus][0] -= self.value
         RHS[self.NMinus][0] += self.value
         return stampMatrix, RHS, appendLine
+    
+    def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+        return self.load(stampMatrix, RHS, appendLine)
 
 class VSource(SuperDevice):
-    def __init__(self, name, connectionPoints, value):
-        super().__init__(name, connectionPoints)
+    def __init__(self, name, connectionPoints, value, _type):
+        super().__init__(name, connectionPoints, _type)
         self.value = value
     
     def load(self, stampMatrix, RHS, appendLine):
@@ -87,9 +171,27 @@ class VSource(SuperDevice):
 
         return stampMatrix, RHS, appendLine
 
+    def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
+        if not appendLine.__contains__(self.name):
+            index = stampMatrix.shape[0]
+            # print(stampMatrix.shape)
+            stampMatrix = expandMatrix(stampMatrix, 1)
+            # print(stampMatrix.shape, self.NPlus, index)
+            stampMatrix[self.NPlus][index] += 1
+            stampMatrix[self.NMinus][index] -= 1
+            stampMatrix[index][self.NPlus] += 1
+            stampMatrix[index][self.NMinus] -= 1
+            appendLine[self.name] = index
+
+        return stampMatrix, RHS, appendLine
+    
+    def loadBERHS(self, stampMatrix, RHS, appendLine, h, lastValue):
+        RHS = np.vstack((RHS, np.array([[self.value]])))
+        return RHS
+
 class VCCS(SuperDevice):
-    def __init__(self, name, connectionPoints, value, controlConnectionPoints):
-        super().__init__(name, connectionPoints)
+    def __init__(self, name, connectionPoints, value, controlConnectionPoints, _type):
+        super().__init__(name, connectionPoints, _type)
         self.value = value
         self.controlPoints = controlConnectionPoints
         self.NCPlus = self.controlPoints[0]
@@ -102,9 +204,12 @@ class VCCS(SuperDevice):
         stampMatrix[self.NMinus][self.NCMinus] += self.value
         return stampMatrix, RHS, appendLine
         
+    def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+        return self.load(stampMatrix, RHS, appendLine)
+
 class VCVS(SuperDevice):
-    def __init__(self, name, connectionPoints, value, controlConnectionPoints):
-        super().__init__(name, connectionPoints)
+    def __init__(self, name, connectionPoints, value, controlConnectionPoints, _type):
+        super().__init__(name, connectionPoints, _type)
         self.value = value
         self.controlPoints = controlConnectionPoints
         self.NCPlus = self.controlPoints[0]
@@ -124,9 +229,12 @@ class VCVS(SuperDevice):
         appendLine[self.name] = index
         return stampMatrix, RHS, appendLine
         
+    def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+        return self.load(stampMatrix, RHS, appendLine)
+
 class CCCS(SuperDevice):
-    def __init__(self, name, connectionPoints, value, controlConnectionPoints, control, controlValue):
-        super().__init__(name, connectionPoints)
+    def __init__(self, name, connectionPoints, value, controlConnectionPoints, control, controlValue, _type):
+        super().__init__(name, connectionPoints, _type)
         self.value = value
         self.controlPoints = controlConnectionPoints
         self.NCPlus = self.controlPoints[0]
@@ -155,9 +263,13 @@ class CCCS(SuperDevice):
             
         return stampMatrix, RHS, appendLine
 
+    def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+        return self.load(stampMatrix, RHS, appendLine)
+
+
 class CCVS(SuperDevice):
-    def __init__(self, name, connectionPoints, value, controlConnectionPoints, control, controlValue):
-        super().__init__(name, connectionPoints)
+    def __init__(self, name, connectionPoints, value, controlConnectionPoints, control, controlValue, _type):
+        super().__init__(name, connectionPoints, _type)
         self.value = value
         self.controlPoints = controlConnectionPoints
         self.NCPlus = self.controlPoints[0]
@@ -199,3 +311,6 @@ class CCVS(SuperDevice):
             appendLine[self.name] = indexK
             
         return stampMatrix, RHS, appendLine
+
+    def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+        return self.load(stampMatrix, RHS, appendLine)

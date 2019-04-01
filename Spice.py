@@ -27,33 +27,33 @@ class Spice:
     def prepareAnalysis(self):
         self.changeConnectionPoints()
         for device in self.deviceList:
-            # print('device', device)
+            print('device', device)
             if device['deviceType'] == 'R':
-                self.devices.append(Resistor(device['name'], device['connectionPoints'], device['value']))
+                self.devices.append(Resistor(device['name'], device['connectionPoints'], device['value'], device['deviceType']))
             elif device['deviceType'] == 'L':
-                self.devices.append(Resistor(device['name'], device['connectionPoints'], device['value']))
+                self.devices.append(Inductor(device['name'], device['connectionPoints'], device['value'], device['deviceType']))
             elif device['deviceType'] == 'C':
-                self.devices.append(Resistor(device['name'], device['connectionPoints'], device['value']))
+                self.devices.append(Capacitor(device['name'], device['connectionPoints'], device['value'], device['deviceType']))
             elif device['deviceType'] == 'I':
-                self.devices.append(ISource(device['name'], device['connectionPoints'], device['DC']))
+                self.devices.append(ISource(device['name'], device['connectionPoints'], device['DC'], device['deviceType']))
             elif device['deviceType'] == 'V':
-                self.devices.append(VSource(device['name'], device['connectionPoints'], device['DC']))
+                self.devices.append(VSource(device['name'], device['connectionPoints'], device['DC'], device['deviceType']))
             elif device['deviceType'] == 'E':
-                self.devices.append(VCVS(device['name'], device['connectionPoints'], device['value'], device['control']))
+                self.devices.append(VCVS(device['name'], device['connectionPoints'], device['value'], device['control'], device['deviceType']))
             elif device['deviceType'] == 'F':
                 for d in self.deviceList:
                     if d['name'] == device['control']:
                         controlDevice = d
                         break
-                self.devices.append(CCCS(device['name'], device['connectionPoints'], device['value'], controlDevice['connectionPoints'], device['control'], device['value']))
+                self.devices.append(CCCS(device['name'], device['connectionPoints'], device['value'], controlDevice['connectionPoints'], device['control'], device['value'], device['deviceType']))
             elif device['deviceType'] == 'G':
-                self.devices.append(VCCS(device['name'], device['connectionPoints'], device['value'], device['control']))
+                self.devices.append(VCCS(device['name'], device['connectionPoints'], device['value'], device['control'], device['deviceType']))
             elif device['deviceType'] == 'H':
                 for d in self.deviceList:
                     if d['name'] == device['control']:
                         controlDevice = d
                         break
-                self.devices.append(CCVS(device['name'], device['connectionPoints'], device['value'], controlDevice['connectionPoints'], device['control'], device['value']))
+                self.devices.append(CCVS(device['name'], device['connectionPoints'], device['value'], controlDevice['connectionPoints'], device['control'], device['value'], device['deviceType']))
         # print(self.devices, '\n', self.nodeDict)
 
     # this function map the node to consecutive number
@@ -75,3 +75,7 @@ class Spice:
     def solve(self):
         solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
         solve.stamping()
+
+    def solveTran(self, method = 'BE'):
+        solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
+        solve.stampingBE()
