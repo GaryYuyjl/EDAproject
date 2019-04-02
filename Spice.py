@@ -76,6 +76,32 @@ class Spice:
         solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
         solve.stamping()
 
-    def solveTran(self, method = 'BE'):
+    def solveTran(self, method = 'BE', step = 0.01, stop = 200):
         solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
-        solve.stampingBE()
+        if method == 'BE':
+            self.tranValueBE = solve.stampingBE(step, stop)
+        elif method == 'FE':
+            self.tranValueFE = solve.stampingFE(step, stop)
+        elif method == 'TRAP':
+            self.tranValueTRAP = solve.stampingTRAP(step, stop)
+    
+    def plotTran(step = 0.01, stop = 200):
+        x = np.arange(0, stop * step, step) 
+        y1 = self.tranValueFE[..., 1]
+        plt.plot(x,y1[1:])
+        # plt.plot(x,y2)
+        # plt.plot(x,y3)
+        y2 = self.tranValueBE[..., 1]
+        plt.plot(x,y2[1:])
+        # plt.plot(x,y2)
+        # plt.plot(x,y3)
+        y3 = self.tranValueTRAP[..., 1] 
+        plt.plot(x,y3[1:])
+        # plt.plot(x,y2)
+        # plt.plot(x,y3)
+        plt.show()
+        plt.title("Matplotlib demo") 
+        plt.xlabel("x axis caption") 
+        plt.ylabel("y axis caption") 
+
+
