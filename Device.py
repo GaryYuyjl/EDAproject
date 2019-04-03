@@ -411,7 +411,7 @@ class VCCS(SuperDevice):
         return stampMatrix, RHS, appendLine
         
     def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        return RHS
+        return RHS, appendLine
 
     def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
@@ -479,7 +479,7 @@ class VCVS(SuperDevice):
         appendLine[self.name] = index
         RHS = np.vstack((RHS, np.array([0])))
 
-        return RHS
+        return RHS, appendLine
 
     def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)

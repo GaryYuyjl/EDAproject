@@ -3,7 +3,9 @@ from Parser import Parser
 from Solve import Solve
 import sys
 from Device import *
+import matplotlib.pyplot as plt
 
+# the main spice class
 class Spice:
     def __init__(self):
         self.devices = []
@@ -11,6 +13,9 @@ class Spice:
         self.deviceList = []
         self.commandList = []
     
+        self.tranValueBE = []
+        self.tranValueTRAP = []
+        self.tranValueFE = []
     # this function parse the netlist
     def parse(self, netlist):
         self.devices = []
@@ -71,11 +76,22 @@ class Spice:
                 device['control'] = tuple(tmp)
         # print('change', self.deviceList)
         
+    def clean(self):
+        self.devices = []
+        self.nodeDict = {}
+        self.deviceList = []
+        self.commandList = []
+    
+        self.tranValueBE = []
+        self.tranValueTRAP = []
+        self.tranValueFE = []
+
     # this function generate the MNA
     def solve(self):
         solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
         solve.stamping()
 
+    # solve the function in transient, has three methods
     def solveTran(self, method = 'BE', step = 0.01, stop = 200):
         solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
         if method == 'BE':
@@ -85,23 +101,30 @@ class Spice:
         elif method == 'TRAP':
             self.tranValueTRAP = solve.stampingTRAP(step, stop)
     
-    def plotTran(step = 0.01, stop = 200):
+    def plotTran(self, step = 0.01, stop = 200, mannual=[]):
+        plt.figure(figsize=(10, 9))
         x = np.arange(0, stop * step, step) 
         y1 = self.tranValueFE[..., 1]
-        plt.plot(x,y1[1:])
-        # plt.plot(x,y2)
-        # plt.plot(x,y3)
+        plt.plot(x,y1[1:], label="FE")
         y2 = self.tranValueBE[..., 1]
-        plt.plot(x,y2[1:])
-        # plt.plot(x,y2)
-        # plt.plot(x,y3)
+        plt.plot(x,y2[1:], label="BE")
         y3 = self.tranValueTRAP[..., 1] 
-        plt.plot(x,y3[1:])
-        # plt.plot(x,y2)
-        # plt.plot(x,y3)
-        plt.show()
+        plt.plot(x,y3[1:], label="TRAP")
+        plt.legend(loc='upper right')
+        # plt.show()
+        # V = 10 
+        # R = 5
+        # L = 4
+        # C = 3
+        # ym = 10 - 10 * ((np.exp(-1/30*x) * np.cos(np.sqrt(37) / (3*np.sqrt(50)) * x)) +
+        #  np.exp(-1/30*x) * np.sin(np.sqrt(37) / (3*np.sqrt(50))) * np.sqrt(50) / (10*np.sqrt(37)))
+
+        # ym = 1 + 9 * (np.exp(-11/100*x)*np.cos(3*np.sqrt(31)/100*x) + np.exp(-11/100*x)*np.sin(3*np.sqrt(31)/100*x)*11/3/np.sqrt(31))
+        if len(mannual):
+            plt.plot(x,mannual, label="mannual")
+        plt.legend(loc='best')
+
         plt.title("Matplotlib demo") 
-        plt.xlabel("x axis caption") 
-        plt.ylabel("y axis caption") 
-
-
+        plt.xlabel("t") 
+        plt.ylabel("V") 
+        plt.show()
