@@ -111,15 +111,6 @@ class Spice:
         y3 = self.tranValueTRAP[..., 1] 
         plt.plot(x,y3[1:], label="TRAP")
         plt.legend(loc='upper right')
-        # plt.show()
-        # V = 10 
-        # R = 5
-        # L = 4
-        # C = 3
-        # ym = 10 - 10 * ((np.exp(-1/30*x) * np.cos(np.sqrt(37) / (3*np.sqrt(50)) * x)) +
-        #  np.exp(-1/30*x) * np.sin(np.sqrt(37) / (3*np.sqrt(50))) * np.sqrt(50) / (10*np.sqrt(37)))
-
-        # ym = 1 + 9 * (np.exp(-11/100*x)*np.cos(3*np.sqrt(31)/100*x) + np.exp(-11/100*x)*np.sin(3*np.sqrt(31)/100*x)*11/3/np.sqrt(31))
         if len(mannual):
             plt.plot(x,mannual, label="mannual")
         plt.legend(loc='best')
