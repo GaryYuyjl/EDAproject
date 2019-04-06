@@ -21,17 +21,11 @@ class Solve:
         # generate the MNA matrix by calling load function in each device
         for device in self.devices:
             self.stampMatrix, self.RHS, self.appendLine = device.load(self.stampMatrix, self.RHS, self.appendLine)
-        # print and solve   
-        # print('stampMatrix\n', self.stampMatrix[1:, 1:])
-        # print('RHS\n', self.RHS[1:])
         x = np.linalg.solve(self.stampMatrix[1:, 1:], self.RHS[1:])
         # x = np.linalg.solve(self.stampMatrix, self.RHS)
         # print('stampMatrix\n', self.stampMatrix, self.RHS)
         revNodeDict = dict((v, k) for  k,v in self.nodeDict.items())
         revAppendLine = dict((v, k) for  k,v in self.appendLine.items())
-        # print('node map\n', self.nodeDict)
-        # print('appendLine\n', self.appendLine)
-        # print('result\n', x)
         
         for k, v in revNodeDict.items():
             if k == 0:
@@ -42,73 +36,69 @@ class Solve:
     
     #  solve TRAN with BE
     def stampingBE(self, step, stop):
-        RHSAppendLine = {}
         # generate the unchangeable MNA matrix
         for device in self.devices:
             self.stampMatrix, self.RHS, self.appendLine = device.loadBEMatrix(self.stampMatrix, self.RHS, self.appendLine, step)
         # print('stamp matrix', self.stampMatrix)
-        self.tranValueBE = np.zeros((1, self.stampMatrix.shape[1] - 1))
+        self.tranValueBE = np.zeros((1, self.stampMatrix.shape[1]))
 
         for i in range(stop):
+            RHSAppendLine = {}
             tmpRHS = copy.deepcopy(self.RHS)
             for device in self.devices:
-                tmpRHS, RHSAppendLine = device.loadBERHS(self.stampMatrix, tmpRHS, RHSAppendLine, step, np.insert(self.tranValueBE[-1], 0, np.array([0])))
+                tmpRHS, RHSAppendLine = device.loadBERHS(self.stampMatrix, tmpRHS, RHSAppendLine, step, self.tranValueBE[-1])
 
-            # print(self.stampMatrix)
             x = np.linalg.solve(self.stampMatrix[1:, 1:], tmpRHS[1:])
-            # print(x.shape, self.tranValueBE.reshape((1,)).shape.)
-            self.tranValueBE = np.append(self.tranValueBE, x.T, 0)
+            x = np.insert(x, 0, np.array([0]))
+            self.tranValueBE = np.append(self.tranValueBE, [x.T], 0)
 
         # print(self.tranValueBE)
         # print('node map\n', self.nodeDict)
         # print('appendLine\n', self.appendLine)
-        x = np.arange(0, stop * step, step) 
-        return self.tranValueBE
+        return self.tranValueBE, self.appendLine
 
     # solve TRAN with FE
     def stampingFE(self, step, stop):
-        RHSAppendLine = {}
         # generate the unchangeable MNA matrix
         for device in self.devices:
             self.stampMatrix, self.RHS, self.appendLine = device.loadFEMatrix(self.stampMatrix, self.RHS, self.appendLine, step)
         # print('stamp matrix', self.stampMatrix)
-        self.tranValueFE = np.zeros((1, self.stampMatrix.shape[1] - 1))
+        self.tranValueFE = np.zeros((1, self.stampMatrix.shape[1]))
 
         for i in range(stop):
+            RHSAppendLine = {}
             tmpRHS = copy.deepcopy(self.RHS)
             for device in self.devices:
-                tmpRHS, RHSAppendLine = device.loadFERHS(self.stampMatrix, tmpRHS, RHSAppendLine, step, np.insert(self.tranValueFE[-1], 0, np.array([0])))
+                tmpRHS, RHSAppendLine = device.loadFERHS(self.stampMatrix, tmpRHS, RHSAppendLine, step, self.tranValueFE[-1])
 
             # print(self.stampMatrix)
             x = np.linalg.solve(self.stampMatrix[1:, 1:], tmpRHS[1:])
-            # print(x.shape, self.tranValueFE.reshape((1,)).shape.)
-            self.tranValueFE = np.append(self.tranValueFE, x.T, 0)
+            x = np.insert(x, 0, np.array([0]))
+            self.tranValueFE = np.append(self.tranValueFE, [x.T], 0)
 
         # print(self.tranValueFE)
         # print('node map\n', self.nodeDict)
         # print('appendLine\n', self.appendLine)
-        x = np.arange(0, stop * step, step) 
-        return self.tranValueFE
+        return self.tranValueFE, self.appendLine
     
-    # solve TRAN with TRAP
-    def stampingTRAP(self, step, stop):
-        RHSAppendLine = {}
+    # solve TRAN with TR
+    def stampingTR(self, step, stop):
         # generate the unchangeable MNA matrix
         for device in self.devices:
-            self.stampMatrix, self.RHS, self.appendLine = device.loadTRAPMatrix(self.stampMatrix, self.RHS, self.appendLine, step)
+            self.stampMatrix, self.RHS, self.appendLine = device.loadTRMatrix(self.stampMatrix, self.RHS, self.appendLine, step)
         # print('stamp matrix', self.stampMatrix)
-        self.tranValueTRAP = np.zeros((1, self.stampMatrix.shape[1] - 1))
+        self.tranValueTR = np.zeros((1, self.stampMatrix.shape[1]))
 
         for i in range(stop):
+            RHSAppendLine = {}
             tmpRHS = copy.deepcopy(self.RHS)
             for device in self.devices:
-                tmpRHS, RHSAppendLine = device.loadTRAPRHS(self.stampMatrix, tmpRHS, RHSAppendLine, step, np.insert(self.tranValueTRAP[-1], 0, np.array([0])))
+                tmpRHS, RHSAppendLine = device.loadTRRHS(self.stampMatrix, tmpRHS, RHSAppendLine, step, self.tranValueTR[-1])
 
             # print(self.stampMatrix)
             x = np.linalg.solve(self.stampMatrix[1:, 1:], tmpRHS[1:])
-            # print(x.shape, self.tranValueTRAP.reshape((1,)).shape.)
-            self.tranValueTRAP = np.append(self.tranValueTRAP, x.T, 0)
+            x = np.insert(x, 0, np.array([0]))
+            self.tranValueTR = np.append(self.tranValueTR, [x.T], 0)
         # print('node map\n', self.nodeDict)
         # print('appendLine\n', self.appendLine)
-        x = np.arange(0, stop * step, step) 
-        return self.tranValueTRAP
+        return self.tranValueTR, self.appendLine

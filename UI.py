@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import QWidget, QGridLayout, QMainWindow, QTextEdit, QActio
 from PyQt5.QtGui import QIcon, QTextCursor
 from PyQt5.QtCore import QObject, pyqtSignal
 from Parser import Parser 
-from Solve import Solve 
+from Solve import Solve
 from Spice import Spice 
 from Util import exampleNetlist
 
@@ -84,10 +84,15 @@ class GUI(QMainWindow):
         parse.setStatusTip('Parse')
         parse.triggered.connect(self.parse)
 
-        solve = QAction('Solve', self)
-        solve.setShortcut('Ctrl+S')
-        solve.setStatusTip('Solve')
-        solve.triggered.connect(self.solve)
+        solveDC = QAction('SolveDC', self)
+        solveDC.setShortcut('Ctrl+D')
+        solveDC.setStatusTip('SolveDC')
+        solveDC.triggered.connect(self.solveDC)
+
+        solveTRAN = QAction('SolveTRAN', self)
+        solveTRAN.setShortcut('Ctrl+T')
+        solveTRAN.setStatusTip('SolveTRAN')
+        solveTRAN.triggered.connect(self.solveTRAN)
         
         self.statusBar()
  
@@ -97,7 +102,8 @@ class GUI(QMainWindow):
         toolbar.addAction(saveFile)
         toolbar.addAction(openFile)
         toolbar.addAction(parse)
-        toolbar.addAction(solve)
+        toolbar.addAction(solveDC)
+        toolbar.addAction(solveTRAN)
 
         menubar = self.menuBar()
         fileMenu = menubar.addMenu('&File')
@@ -106,7 +112,8 @@ class GUI(QMainWindow):
         fileMenu.addAction(saveFile)
         fileMenu.addAction(openFile)
         simulationMenu.addAction(parse)
-        simulationMenu.addAction(solve)
+        simulationMenu.addAction(solveDC)
+        simulationMenu.addAction(solveTRAN)
         # toolbar = self.addToolBar('Exit')
         # toolbar.addAction(exitAction)
          
@@ -131,8 +138,14 @@ class GUI(QMainWindow):
         self.mySpice.parse(text)
         self.consoleText.insertPlainText('finish parse\n')
 
-    def solve(self):
+    def solveDC(self):
         self.mySpice.solve()
+
+    def solveTRAN(self):
+        self.mySpice.solveTran(method='BE')
+        self.mySpice.solveTran(method='FE')
+        self.mySpice.solveTran(method='TR')
+        self.mySpice.plotTranWithMatplotlib()
 
 if __name__ == '__main__':
      

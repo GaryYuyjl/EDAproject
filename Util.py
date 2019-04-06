@@ -2,14 +2,12 @@ import re
 import math
 import numpy as np
 exampleNetlist = """*netlist example 1
-R1 1 0 5
-G2 1 0 1 2 2
-R3 1 2 6
-R4 2 0 8
-Is5 0 2 10
-Vs6 3 2 5
-R8 3 4 10
-E7 4 0 1 2 3
+V1 1 0 10
+R2 1 2 5
+L3 1 2 4
+C4 2 0 3
+.plot tran V(2,0)
+.end
 """
 expoDic = {
     'F': 1e-15,
@@ -110,3 +108,18 @@ def expandMatrix(matrix, num):
     matrix = np.hstack((matrix, np.zeros((height, num))))
     matrix = np.vstack((matrix, np.zeros((num, width + num))))
     return matrix
+
+'''
+the  Errors
+'''
+class NoGroundError(Exception):
+    pass
+
+class NoEnddError(Exception):
+    pass
+
+class TranError(Exception):
+    pass
+
+class DCError(Exception):
+    pass

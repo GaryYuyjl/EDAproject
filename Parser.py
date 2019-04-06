@@ -1,9 +1,7 @@
 # 行首能为空格？
-# 最后一行。end处理
 # 字符串转数字
 import re
 from Util import *
-
 class Parser:
     def __init__(self, netlist, nodeDict, deviceList, commandList):
         # self.netlist = netlist.upper()
@@ -12,11 +10,13 @@ class Parser:
         self.nodeCount = 1
         self.deviceList = deviceList
         self.commandList = commandList
+        self.hasGround = False
 
     def updateNodeDict (self, *nodes):
         for node in nodes:
             if node == '0' or node == 0:
                 self.nodeDict[node] = 0
+                self.hasGround = True
                 break
         for node in nodes:
             if not self.nodeDict.__contains__(node):
@@ -24,38 +24,60 @@ class Parser:
                 self.nodeCount += 1
                 
     def startParser(self):
-        print('Start parser now. \n')
-        netlistList = self.netlist.splitlines()
-        # handle the + continue line
-        # print('Read netlist. \n')
-        # print(netlistList)
-        netlistList.reverse()
-        handleContinueLineList = []
-        tempLine = ''
-        for line in netlistList:
-            if len(line) == 0:
-                continue
-            tempLine = line + tempLine 
-            if not line[0] == '+':
-                handleContinueLineList.append(deleteCharsInString('+', tempLine))
-                tempLine = ''
-        if len(tempLine):
-            handleContinueLineList.append(tempLine)
-        # print(handleContinueLineList)
-        handleContinueLineList.reverse()
-        netlistList = handleContinueLineList
-        # print(netlistList)
-        for index, line in enumerate(netlistList):
-            # print(line, index)
-            if not index == 0 and not line[0] == '*': # skip the fist line and the comment line
-                if line[0] == '.': # handle command line
-                    self.handleCommand(line)
-                elif line[0].isalpha(): # handle device
-                    self.handleDevice(line)
-                else:
-                    print('line %d input is wrong' % index)
-        # self.printInformation()
-        return self.nodeDict, self.deviceList, self.commandList
+        # print('Start parser now. \n')
+        try:
+            netlistList = self.netlist.splitlines()
+            # handle the + continue line
+            # print('Read netlist. \n')
+            # print(netlistList)
+            netlistList.reverse()
+            handleContinueLineList = []
+            tempLine = ''
+            for line in netlistList:
+                if len(line) == 0:
+                    continue
+                tempLine = line + tempLine 
+                if not line[0] == '+':
+                    handleContinueLineList.append(deleteCharsInString('+', tempLine))
+                    tempLine = ''
+            if len(tempLine):
+                handleContinueLineList.append(tempLine)
+            # print(handleContinueLineList)
+            handleContinueLineList.reverse()
+            netlistList = handleContinueLineList
+            if not netlistList[-1] == '.END':
+                raise NoEnddError('No .end command!')
+            # print(netlistList)
+            for index, line in enumerate(netlistList):
+                # print(line, index)
+                if not index == 0 and not line[0] == '*': # skip the fist line and the comment line
+                    if line[0] == '.': # handle command line
+                        self.handleCommand(line)
+                    elif line[0].isalpha(): # handle device
+                        self.handleDevice(line)
+                    else:
+                        print('line %d input is wrong' % index)
+            # self.printInformation()
+            if not self.hasGround:
+                raise NoGroundError('No ground!')
+            return self.nodeDict, self.deviceList, self.commandList
+        except NoGroundError as ng:
+            self.clean()
+            print('ERROR NoGroundError', ng)
+            return self.nodeDict, self.deviceList, self.commandList
+        except NoEnddError as ne:
+            self.clean()
+            print('ERROR NoEnddError', ne)
+            return self.nodeDict, self.deviceList, self.commandList
+        except Exception as e:
+            self.clean()
+            print('ERROR', e)
+            return self.nodeDict, self.deviceList, self.commandList
+
+    def clean(self):
+        self.nodeDict = {}
+        self.deviceList = []
+        self.commandList = []
 
     def printInformation(self):
         print(self.nodeDict)
@@ -89,6 +111,8 @@ class Parser:
             self.parseRLC(line.strip().split())
         elif deviceParseType == 1:
             self.parseEFGH(line.strip().split())
+        elif deviceParseType == 2:
+            self.parseD(line)
         elif deviceParseType == 3:
             self.parseVI(line)
         elif deviceParseType == 4:
@@ -124,7 +148,7 @@ class Parser:
                 commandParams['start2'] = stringToNum(commandList[6])
                 commandParams['stop2'] = stringToNum(commandList[7])
                 commandParams['incr2'] = stringToNum(commandList[8])
-        elif commandParams['type'] == 'PRINT':
+        elif commandParams['type'] == 'PRINT' or commandParams['type'] == 'PLOT':
             commandParams['prtype'] = commandList[1]
             ovs = []
             for ov in commandList[2:]:
@@ -132,7 +156,7 @@ class Parser:
                 ovParams.remove('')
                 # print('ovparams', ovParams)
                 if len(ovParams) == 2:
-                    ovNodes = (ovParams[1], 0)
+                    ovNodes = (ovParams[1], '0')
                 elif len(ovParams) == 3:
                     ovNodes = (ovParams[1], ovParams[2])
                 else:
@@ -212,6 +236,20 @@ class Parser:
             'name': name,
             'connectionPoints': connectionPoints,
             'value': value
+        })
+
+    def parseD(self, device):
+        deviceType = device[0][0]
+        name = device[0]
+        connectionPoints = (device[1], device[2])
+        self.updateNodeDict(device[1], device[2])
+        # value = stringToNum(device[3])
+        # print(device)
+        self.deviceList.append({
+            'deviceType': deviceType,
+            'name': name,
+            'connectionPoints': connectionPoints
+            # 'value': value
         })
 
     def parseM(self, _device):

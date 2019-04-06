@@ -1,5 +1,7 @@
 from Util import *
+import numpy as np
 # father class of all devices
+alpha = 40
 class SuperDevice:
     def __init__(self, name, connectionPoints, _type):
         self.connectionPoints = connectionPoints
@@ -10,6 +12,42 @@ class SuperDevice:
 
     def load(self):
         pass
+
+class Diode(SuperDevice):
+    def __init__(self, name, connectionPoints, _type):
+        super().__init__(name, connectionPoints, _type)
+        # self.value = value
+    
+    def load(self, stampMatrix, RHS, appendLine):
+        return stampMatrix, RHS, appendLine
+    
+    def loadBEMatrix(self, stampMatrix, RHS, appendLine, step, lastValue):
+        # v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
+
+        # stampMatrix[self.NPlus][self.NPlus] += alpha * np.exp(alpha * v)
+        # stampMatrix[self.NMinus][self.NPlus] -= 1 / self.value
+        # stampMatrix[self.NPlus][self.NMinus] -= 1 / self.value
+        # stampMatrix[self.NMinus][self.NMinus] += 1 / self.value
+        return self.load(stampMatrix, RHS, appendLine)
+
+    def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+        # v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
+        
+        # RHS[self.NPlus][0] -= alpha * np.exp(alpha * v_tMinush)
+        # RHS[self.NMinus][0] += alpha * np.exp(alpha * v_tMinush)
+        return RHS, appendLine
+    
+    def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
+        return self.load(stampMatrix, RHS, appendLine)
+
+    def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+        return RHS, appendLine
+    
+    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
+        return self.load(stampMatrix, RHS, appendLine)
+
+    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+        return RHS, appendLine
 
 class Resistor(SuperDevice):
     def __init__(self, name, connectionPoints, value, _type):
@@ -44,13 +82,12 @@ class Resistor(SuperDevice):
     def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return RHS, appendLine
     
-    def loadTRAPMatrix(self, stampMatrix, RHS, appendLine, step):
+    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.load(stampMatrix, RHS, appendLine)
 
-    def loadTRAPRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return RHS, appendLine
     
-
 class Capacitor(SuperDevice):
     def __init__(self, name, connectionPoints, value, _type):
         super().__init__(name, connectionPoints, _type)
@@ -129,7 +166,7 @@ class Capacitor(SuperDevice):
 
         return RHS, appendLine
     
-    '''TRAN TRAP
+    '''TRAN TR
         +    -    i   |  RHS
                       |   
     +   0    0    1   |   0
@@ -139,7 +176,7 @@ class Capacitor(SuperDevice):
     br 2C/h -2C/h -1  |  i(t-h)+2C/h*v(t-h)
                       |
     '''
-    def loadTRAPMatrix(self, stampMatrix, RHS, appendLine, step):
+    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
         index = stampMatrix.shape[0]
         stampMatrix = expandMatrix(stampMatrix, 1)
 
@@ -152,7 +189,7 @@ class Capacitor(SuperDevice):
         appendLine[self.name] = index
         return stampMatrix, RHS, appendLine
 
-    def loadTRAPRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         index = len(RHS)
         v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
         i_tMinush = lastValue[index]
@@ -243,7 +280,7 @@ class Inductor(SuperDevice):
 
         return RHS, appendLine
     
-    '''TRAN TRAP
+    '''TRAN TR
         +    -    i   |  RHS
                       |   
     +   0    0    1   |   0
@@ -253,7 +290,7 @@ class Inductor(SuperDevice):
     br  -1   1   2L/h |  2L/h*i(t-h)+i(t-h)
                       |
     '''
-    def loadTRAPMatrix(self, stampMatrix, RHS, appendLine, step):
+    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
         index = stampMatrix.shape[0]
         stampMatrix = expandMatrix(stampMatrix, 1)
 
@@ -266,7 +303,7 @@ class Inductor(SuperDevice):
         appendLine[self.name] = index
         return stampMatrix, RHS, appendLine
 
-    def loadTRAPRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         index = len(RHS)
         v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
         i_tMinush = lastValue[index]
@@ -310,10 +347,10 @@ class ISource(SuperDevice):
     def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
         
-    def loadTRAPMatrix(self, stampMatrix, RHS, appendLine, step):
+    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
     
-    def loadTRAPRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
 
 class VSource(SuperDevice):
@@ -363,21 +400,22 @@ class VSource(SuperDevice):
         return stampMatrix, RHS, appendLine
     
     def loadBERHS(self, stampMatrix, RHS, appendLine, h, lastValue):
-        index = len(RHS)        
-        appendLine[self.name] = index
-        RHS = np.vstack((RHS, np.array([self.value])))
-
+        if not appendLine.__contains__(self.name):
+            index = len(RHS)        
+            appendLine[self.name] = index
+            RHS = np.vstack((RHS, np.array([self.value])))
         return RHS, appendLine
+        
     def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
     
     def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
         
-    def loadTRAPMatrix(self, stampMatrix, RHS, appendLine, step):
+    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
     
-    def loadTRAPRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
         
 class VCCS(SuperDevice):
@@ -419,10 +457,10 @@ class VCCS(SuperDevice):
     def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
         
-    def loadTRAPMatrix(self, stampMatrix, RHS, appendLine, step):
+    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
     
-    def loadTRAPRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
 
 class VCVS(SuperDevice):
@@ -487,10 +525,10 @@ class VCVS(SuperDevice):
     def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
         
-    def loadTRAPMatrix(self, stampMatrix, RHS, appendLine, step):
+    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
     
-    def loadTRAPRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
 
 class CCCS(SuperDevice):
@@ -574,10 +612,10 @@ class CCCS(SuperDevice):
     def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
         
-    def loadTRAPMatrix(self, stampMatrix, RHS, appendLine, step):
+    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
     
-    def loadTRAPRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
 
 class CCVS(SuperDevice):
@@ -639,7 +677,6 @@ class CCVS(SuperDevice):
             stampMatrix[indexK][indexC] -= self.value
             RHS = np.vstack((RHS, np.array([0]))) # add vc
             appendLine[self.name] = indexK
-            
         return stampMatrix, RHS, appendLine
 
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
@@ -648,7 +685,6 @@ class CCVS(SuperDevice):
             stampMatrix = expandMatrix(stampMatrix, 1)
             indexC = stampMatrix.shape[0]
             stampMatrix = expandMatrix(stampMatrix, 1)
-
             stampMatrix[self.NPlus][indexK] += 1
             stampMatrix[self.NMinus][indexK] -= 1
             stampMatrix[indexK][self.NPlus] += 1
@@ -698,8 +734,8 @@ class CCVS(SuperDevice):
     def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
         
-    def loadTRAPMatrix(self, stampMatrix, RHS, appendLine, step):
+    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
 
-    def loadTRAPRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
