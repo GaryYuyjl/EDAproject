@@ -16,25 +16,25 @@ class SuperDevice:
 class Diode(SuperDevice):
     def __init__(self, name, connectionPoints, _type):
         super().__init__(name, connectionPoints, _type)
-        # self.value = value
+        self.alpha = 40
     
     def load(self, stampMatrix, RHS, appendLine):
         return stampMatrix, RHS, appendLine
     
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, step, lastValue):
-        # v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
+        v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
 
-        # stampMatrix[self.NPlus][self.NPlus] += alpha * np.exp(alpha * v)
-        # stampMatrix[self.NMinus][self.NPlus] -= 1 / self.value
-        # stampMatrix[self.NPlus][self.NMinus] -= 1 / self.value
-        # stampMatrix[self.NMinus][self.NMinus] += 1 / self.value
-        return self.load(stampMatrix, RHS, appendLine)
+        stampMatrix[self.NPlus][self.NPlus] += self.alpha * np.exp(self.alpha * v_tMinush)
+        stampMatrix[self.NMinus][self.NPlus] -= self.alpha * np.exp(self.alpha * v_tMinush)
+        stampMatrix[self.NPlus][self.NMinus] -= self.alpha * np.exp(self.alpha * v_tMinush)
+        stampMatrix[self.NMinus][self.NMinus] += self.alpha * np.exp(self.alpha * v_tMinush)
+        return stampMatrix, RHS, appendLine
 
     def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        # v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
+        v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
         
-        # RHS[self.NPlus][0] -= alpha * np.exp(alpha * v_tMinush)
-        # RHS[self.NMinus][0] += alpha * np.exp(alpha * v_tMinush)
+        RHS[self.NPlus][0] -= np.exp(self.alpha * v_tMinush) - 1 - self.alpha * np.exp(self.alpha * v_tMinush) * v_tMinush
+        RHS[self.NMinus][0] += np.exp(self.alpha * v_tMinush) - 1 - self.alpha * np.exp(self.alpha * v_tMinush) * v_tMinush
         return RHS, appendLine
     
     def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
