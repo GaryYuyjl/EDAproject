@@ -52,6 +52,8 @@ class Spice:
                 self.devices.append(Inductor(device['name'], device['connectionPoints'], device['value'], device['deviceType']))
             elif device['deviceType'] == 'D':
                 self.devices.append(Diode(device['name'], device['connectionPoints'], device['deviceType']))
+            elif device['deviceType'] == 'M':
+                self.devices.append(Mosfet(device['name'], device['connectionPoints'], device['deviceType']))
             elif device['deviceType'] == 'C':
                 self.devices.append(Capacitor(device['name'], device['connectionPoints'], device['value'], device['deviceType']))
             elif device['deviceType'] == 'I':

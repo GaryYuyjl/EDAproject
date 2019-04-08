@@ -112,7 +112,7 @@ class Parser:
         elif deviceParseType == 1:
             self.parseEFGH(line.strip().split())
         elif deviceParseType == 2:
-            self.parseD(line)
+            self.parseD(line.strip().split())
         elif deviceParseType == 3:
             self.parseVI(line)
         elif deviceParseType == 4:

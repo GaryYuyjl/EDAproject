@@ -36,23 +36,45 @@ class Solve:
     
     #  solve TRAN with BE
     def stampingBE(self, step, stop):
-        # generate the unchangeable MNA matrix
+        print(self.deviceList)
+        # generate the unchangeable MNA matrix without nonlinear device
         for device in self.devices:
-            self.stampMatrix, self.RHS, self.appendLine = device.loadBEMatrix(self.stampMatrix, self.RHS, self.appendLine, step)
+            if not (device.type == 'D' or device.type == 'M'):
+                self.stampMatrix, self.RHS, self.appendLine = device.loadBEMatrix(self.stampMatrix, self.RHS, self.appendLine, step)
         # print('stamp matrix', self.stampMatrix)
         self.tranValueBE = np.zeros((1, self.stampMatrix.shape[1]))
 
         for i in range(stop):
-            RHSAppendLine = {}
-            tmpRHS = copy.deepcopy(self.RHS)
-            for device in self.devices:
-                tmpRHS, RHSAppendLine = device.loadBERHS(self.stampMatrix, tmpRHS, RHSAppendLine, step, self.tranValueBE[-1])
+            error = 100
+            # x_ = np.zeros((len(self.stampMatrix), 1))
+            x_ = self.tranValueBE[-1]
+            xnoInterate = self.tranValueBE[-1]
+            while abs(error) > 1e-5:
+                # print(x_)
+                # add the nonlinear device
+                stampMatrixWithNonlinear = copy.deepcopy(self.stampMatrix)
+                tmpRHS = copy.deepcopy(self.RHS)
+                RHSAppendLine = {}  
+                for device in self.devices:
+                    if device.type == 'D' or device.type == 'M':
+                        # print(2)
+                        stampMatrixWithNonlinear, tmpRHS, self.appendLine = device.loadBEMatrix(stampMatrixWithNonlinear, tmpRHS, self.appendLine, step, x_)
+                for device in self.devices:
+                    if device.type == 'D' or device.type == 'M':
+                        # print(3)
+                        tmpRHS, RHSAppendLine = device.loadBERHS(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, x_)
+                    else:
+                        tmpRHS, RHSAppendLine = device.loadBERHS(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, xnoInterate)
+                # print(stampMatrixWithNonlinear, '\n', self.stampMatrix, '\n' ,tmpRHS)
+                x = np.linalg.solve(stampMatrixWithNonlinear[1:, 1:], tmpRHS[1:])
+                x = np.insert(x, 0, np.array([0]))
+                error = np.sum(x - x_)
+                # print('sove', x)
+                # print('error',i , error)
+                x_ = x
+            self.tranValueBE = np.append(self.tranValueBE, [x_.T], 0)
 
-            x = np.linalg.solve(self.stampMatrix[1:, 1:], tmpRHS[1:])
-            x = np.insert(x, 0, np.array([0]))
-            self.tranValueBE = np.append(self.tranValueBE, [x.T], 0)
-
-        # print(self.tranValueBE)
+        print(self.tranValueBE)
         # print('node map\n', self.nodeDict)
         # print('appendLine\n', self.appendLine)
         return self.tranValueBE, self.appendLine

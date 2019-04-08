@@ -33,8 +33,65 @@ class Diode(SuperDevice):
     def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
         
-        RHS[self.NPlus][0] -= np.exp(self.alpha * v_tMinush) - 1 - self.alpha * np.exp(self.alpha * v_tMinush) * v_tMinush
-        RHS[self.NMinus][0] += np.exp(self.alpha * v_tMinush) - 1 - self.alpha * np.exp(self.alpha * v_tMinush) * v_tMinush
+        RHS[self.NPlus][0] -= np.exp(self.alpha * v_tMinush) - 1 - self.alpha * v_tMinush * np.exp(self.alpha * v_tMinush)
+        RHS[self.NMinus][0] += np.exp(self.alpha * v_tMinush) - 1 - self.alpha * v_tMinush * np.exp(self.alpha * v_tMinush)
+        return RHS, appendLine
+    
+    def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
+        return self.load(stampMatrix, RHS, appendLine)
+
+    def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+        return RHS, appendLine
+    
+    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
+        return self.load(stampMatrix, RHS, appendLine)
+
+    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+        return RHS, appendLine
+
+class Mosfet(SuperDevice):
+    def __init__(self, name, connectionPoints, _type):
+        super().__init__(name, connectionPoints, _type)
+        self.D = connectionPoints[0]
+        self.G = connectionPoints[1]
+        self.S = connectionPoints[2]
+        self.B = connectionPoints[3]
+        self.k = 1
+        self.W = 2
+        self.L = 1
+        self.vt = 0.4
+        self.lamda = 1
+
+    def load(self, stampMatrix, RHS, appendLine):
+        return stampMatrix, RHS, appendLine
+    
+    def loadBEMatrix(self, stampMatrix, RHS, appendLine, step, lastValue):
+        vgs = lastValue[self.G] - lastValue[self.S]
+        vds = lastValue[self.D] - lastValue[self.S]
+        gds = self.k * self.W / self.L * (vgs - self.vt) ** 2 * self.lamda
+        gm = self.k * self.W / self.L * 2 * vds
+
+        stampMatrix[self.D][self.D] += gds
+        stampMatrix[self.S][self.D] -= gds
+        stampMatrix[self.D][self.S] -= gds + gm
+        stampMatrix[self.S][self.S] += gds + gm
+        stampMatrix[self.D][self.G] += gm
+        stampMatrix[self.S][self.G] -= gm
+        return stampMatrix, RHS, appendLine
+
+    def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
+        vgs = lastValue[self.G] - lastValue[self.S]
+        vds = lastValue[self.D] - lastValue[self.S]
+        gds = self.k * self.W / self.L * (vgs - self.vt) ** 2 * self.lamda
+        gm = self.k * self.W / self.L * 2 * vds
+
+        if vds < vgs - self.vt:
+            ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2) * (1 + self.lamda * vds)
+        elif vds > vgs - self.vt:
+            ids = self.k * self.W / self.L * (vgs - self.vt) ** 2 * (1 + self.lamda * vds)
+        jds = ids - gm * vgs - gds * vds
+        RHS[self.D][0] -= jds
+        RHS[self.S][0] += jds
         return RHS, appendLine
     
     def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
