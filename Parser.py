@@ -71,7 +71,7 @@ class Parser:
             return self.nodeDict, self.deviceList, self.commandList
         except Exception as e:
             self.clean()
-            print('ERROR', e)
+            print('Something ERROR', e)
             return self.nodeDict, self.deviceList, self.commandList
 
     def clean(self):
@@ -143,7 +143,8 @@ class Parser:
             commandParams['start1'] = stringToNum(commandList[2])
             commandParams['stop1'] = stringToNum(commandList[3])
             commandParams['incr1'] = stringToNum(commandList[4])
-            if len(commandParams) > 5:
+            print('commandParams', commandParams)
+            if len(commandList) > 5:
                 commandParams['src2'] = commandList[5]
                 commandParams['start2'] = stringToNum(commandList[6])
                 commandParams['stop2'] = stringToNum(commandList[7])

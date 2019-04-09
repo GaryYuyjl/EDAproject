@@ -50,21 +50,97 @@ class Diode(SuperDevice):
         return RHS, appendLine
 
 class Mosfet(SuperDevice):
-    def __init__(self, name, connectionPoints, _type):
+    def __init__(self, name, connectionPoints, _type, mname):
         super().__init__(name, connectionPoints, _type)
+        self.mname = mname
         self.D = connectionPoints[0]
         self.G = connectionPoints[1]
         self.S = connectionPoints[2]
         self.B = connectionPoints[3]
-        self.k = 1
-        self.W = 2
-        self.L = 1
-        self.vt = 0.4
-        self.lamda = 1
+        if mname[0] == 'N':
+            self.k = 115e-6
+            self.W = 2
+            self.L = 1
+            self.vt = 0.43
+            self.lamda = 0.06
+        elif mname[0] == 'P':
+            self.k = -30e-6
+            self.W = 4
+            self.L = 1
+            self.vt = -0.4
+            self.lamda = -0.1
 
     def load(self, stampMatrix, RHS, appendLine):
         return stampMatrix, RHS, appendLine
-    
+
+    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, dcValue = None):
+        vgs = lastValue[self.G] - lastValue[self.S]
+        vds = lastValue[self.D] - lastValue[self.S]
+        # if self.mname[0] == 'N':
+        #     gds = self.k * self.W / self.L * (vgs - self.vt) ** 2 * self.lamda
+        #     gm = self.k * self.W / self.L * 2 * vds
+        # elif self.mname[0] == 'P':
+        #     gds = self.k * self.W / self.L * (-vgs + self.vt) ** 2 * self.lamda
+        #     gm = -self.k * self.W / self.L * 2 * vds
+        # print('gds', gds)
+        # print('gm', gm)
+        # print(self.mname[0], vgs, vds)
+        if self.mname[0] == 'N':
+            if vgs <= self.vt:
+                # print(1,vds, vgs, self.vt, lastValue)
+                gm = 0
+                gds = 0
+                ids = 0
+            elif vds <= vgs - self.vt:
+                # print(2,vds, vgs, self.vt, lastValue)
+                gm = self.k * self.W / self.L * 2 * vds * (1 + self.lamda * vds)
+                gds = self.k * self.W / self.L * (2 * (vgs - self.vt) + (4 * self.lamda * (vgs - self.vt) - 2) * vds - 3 * self.lamda * vds ** 2)
+                ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2) * (1 + self.lamda * vds)
+            elif vds > vgs - self.vt:
+                # print(3,vds, vgs, self.vt, lastValue)
+                gm = self.k * self.W / self.L * 2 * (vgs - self.vt) * (1 + self.lamda * vds)
+                gds = self.k * self.W / self.L * (vgs - self.vt) ** 2 * self.lamda
+                ids = self.k * self.W / self.L * (vgs - self.vt) ** 2 * (1 + self.lamda * vds)
+        elif self.mname[0] == 'P':
+            if vgs >= self.vt:
+                # print(4,vds, vgs, self.vt, lastValue)
+                ids = 0
+                gm = 0
+                gds = 0
+            elif vds >= vgs - self.vt:
+                # print(5,vds, vgs, self.vt, lastValue)
+                gm = self.k * self.W / self.L * 2 * vds * (1 + self.lamda * vds)
+                ### 重新算一下
+                gds = self.k * self.W / self.L * (2 * (vgs - self.vt) + (-4 * self.lamda * (vgs - self.vt) - 2) * vds + 3 * self.lamda * vds ** 2)
+                ids = self.k * self.W / self.L * (2 * (-vgs + self.vt) * -vds - vds ** 2) * (1 + self.lamda * vds)
+                if vds >= 0:
+                    gm = self.k * self.W / self.L * 2 * vds
+                    ### 重新算一下
+                    gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
+                    ids = self.k * self.W / self.L * (2 * (-vgs + self.vt) * -vds - vds ** 2)
+            elif vds < vgs - self.vt:
+                # print(6,vds, vgs, self.vt, lastValue)
+                gm = self.k * self.W / self.L * 2 * (-vgs + self.vt) * (1 + self.lamda * vds)
+                gds = self.k * self.W / self.L * (vgs - self.vt) ** 2 * self.lamda
+                ids = self.k * self.W / self.L * (-vgs + self.vt) ** 2 * (1 + self.lamda * vds)
+        stampMatrix[self.D][self.D] += gds
+        stampMatrix[self.S][self.D] -= gds
+        stampMatrix[self.D][self.S] -= gds + gm
+        stampMatrix[self.S][self.S] += gds + gm
+        stampMatrix[self.D][self.G] += gm
+        stampMatrix[self.S][self.G] -= gm
+        # print('vds', vds, gds, gm)
+        jds = ids - gm * vgs - gds * vds
+        RHS[self.D][0] -= jds
+        RHS[self.S][0] += jds
+        return stampMatrix, RHS, appendLine
+
+    def loadDCMatrix(self, stampMatrix, RHS, appendLine, lastValue):
+        return self.loadBEMatrix(stampMatrix, RHS, appendLine, 0, lastValue)
+
+    def loadDCRHS(self, stampMatrix, RHS, appendLine, lastValue):
+        return self.loadBERHS(stampMatrix, RHS, appendLine, 0, lastValue)
+
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, step, lastValue):
         vgs = lastValue[self.G] - lastValue[self.S]
         vds = lastValue[self.D] - lastValue[self.S]
@@ -126,7 +202,16 @@ class Resistor(SuperDevice):
         stampMatrix[self.NPlus][self.NMinus] -= 1 / self.value
         stampMatrix[self.NMinus][self.NMinus] += 1 / self.value
         return stampMatrix, RHS, appendLine
-    
+
+    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, dcValue = None):
+        if dcValue == None:
+            dcValue = self.value
+        stampMatrix[self.NPlus][self.NPlus] += 1 / self.value
+        stampMatrix[self.NPlus][self.NMinus] -= 1 / self.value
+        stampMatrix[self.NMinus][self.NPlus] -= 1 / self.value
+        stampMatrix[self.NMinus][self.NMinus] += 1 / self.value
+        return stampMatrix, RHS, appendLine
+
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.load(stampMatrix, RHS, appendLine)
 
@@ -151,6 +236,15 @@ class Capacitor(SuperDevice):
         self.value = value
     
     def load(self, stampMatrix, RHS, appendLine):
+        stampMatrix[self.NPlus][self.NPlus] += self.value * 1j
+        stampMatrix[self.NPlus][self.NMinus] -= self.value * 1j
+        stampMatrix[self.NMinus][self.NPlus] -= self.value * 1j
+        stampMatrix[self.NMinus][self.NMinus] += self.value * 1j
+        return stampMatrix, RHS, appendLine
+
+    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, dcValue = None):
+        if dcValue == None:
+            dcValue = self.value
         stampMatrix[self.NPlus][self.NPlus] += self.value * 1j
         stampMatrix[self.NPlus][self.NMinus] -= self.value * 1j
         stampMatrix[self.NMinus][self.NPlus] -= self.value * 1j
@@ -425,7 +519,9 @@ class VSource(SuperDevice):
     br  -1   1    0   |   v
                       |
     '''
-    def load(self, stampMatrix, RHS, appendLine):
+    def load(self, stampMatrix, RHS, appendLine, dcValue = None):
+        if dcValue == None:
+            dcValue = self.value
         if not appendLine.__contains__(self.name):
             index = stampMatrix.shape[0]
             # print(stampMatrix.shape)
@@ -436,11 +532,67 @@ class VSource(SuperDevice):
             stampMatrix[index][self.NPlus] += 1
             stampMatrix[index][self.NMinus] -= 1
 
-            RHS = np.vstack((RHS, np.array([self.value])))
+            RHS = np.vstack((RHS, np.array([dcValue])))
             
             appendLine[self.name] = index
 
         return stampMatrix, RHS, appendLine
+
+    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, dcValue = None):
+        # print(dcValue, self.name, self.connectionPoints)
+        if dcValue == None:
+            dcValue = self.value
+        if not appendLine.__contains__(self.name):
+            index = stampMatrix.shape[0]
+            # print(stampMatrix.shape)
+            stampMatrix = expandMatrix(stampMatrix, 1)
+            # print(stampMatrix.shape, self.NPlus, index)
+            stampMatrix[self.NPlus][index] += 1
+            stampMatrix[self.NMinus][index] -= 1
+            stampMatrix[index][self.NPlus] += 1
+            stampMatrix[index][self.NMinus] -= 1
+
+            RHS = np.vstack((RHS, np.array([dcValue])))
+            
+            appendLine[self.name] = index
+        return stampMatrix, RHS, appendLine
+
+    def loadDCMatrix(self, stampMatrix, RHS, appendLine, lastValue = None, dcValue = None):
+        if dcValue == None:
+            dcValue = self.value
+        if not appendLine.__contains__(self.name):
+            index = stampMatrix.shape[0]
+            # print(stampMatrix.shape)
+            stampMatrix = expandMatrix(stampMatrix, 1)
+            # print(stampMatrix.shape, self.NPlus, index)
+            stampMatrix[self.NPlus][index] += 1
+            stampMatrix[self.NMinus][index] -= 1
+            stampMatrix[index][self.NPlus] += 1
+            stampMatrix[index][self.NMinus] -= 1
+
+            # RHS = np.vstack((RHS, np.array([dcValue])))
+            
+            appendLine[self.name] = index
+
+        return stampMatrix, RHS, appendLine
+
+    def loadDCRHS(self, stampMatrix, RHS, appendLine, lastValue = None, dcValue = None):
+        if dcValue == None:
+            dcValue = self.value
+        if not appendLine.__contains__(self.name):
+            # index = stampMatrix.shape[0] 
+            index = len(RHS)
+            # print(stampMatrix.shape)
+            # stampMatrix = expandMatrix(stampMatrix, 1)
+            # print(stampMatrix.shape, self.NPlus, index)
+            # stampMatrix[self.NPlus][index] += 1
+            # stampMatrix[self.NMinus][index] -= 1
+            # stampMatrix[index][self.NPlus] += 1
+            # stampMatrix[index][self.NMinus] -= 1
+
+            RHS = np.vstack((RHS, np.array([dcValue])))
+            appendLine[self.name] = index
+        return RHS, appendLine
 
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
         if not appendLine.__contains__(self.name):

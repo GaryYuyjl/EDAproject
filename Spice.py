@@ -27,14 +27,31 @@ class Spice:
         self.prepareAnalysis()
 
         for command in self.commandList:
+            print(command)
             if command['type'] == 'TRAN':
                 # TRAN
                 stop = command['tstop']
                 step = command['tstep']
                 num = np.floor(stop / step)
-                self.solveTran('FE',step, num)
+                self.solveTran('FE', step, num)
                 self.solveTran('BE', step, num)
                 self.solveTran('TR', step, num)
+            elif command['type'] == 'DC':
+                src1 = command['src1']
+                start1 = command['start1']
+                stop1 = command['stop1']
+                incr1 = command['incr1']
+                if command.__contains__('src2'):
+                    src2 = command['src2']
+                    start2 = command['start2']
+                    stop2 = command['stop2']
+                    incr2 = command['incr2']
+                else:
+                    src2 = None
+                    start2 = None
+                    stop2 = None
+                    incr2 = None
+                self.solveDC(src1, start1, stop1, incr1, src2, start2, stop2, incr2)
             elif command['type'] == 'OP': 
                 # DC
                 self.solve()
@@ -53,7 +70,7 @@ class Spice:
             elif device['deviceType'] == 'D':
                 self.devices.append(Diode(device['name'], device['connectionPoints'], device['deviceType']))
             elif device['deviceType'] == 'M':
-                self.devices.append(Mosfet(device['name'], device['connectionPoints'], device['deviceType']))
+                self.devices.append(Mosfet(device['name'], device['connectionPoints'], device['deviceType'], device['MNAME']))
             elif device['deviceType'] == 'C':
                 self.devices.append(Capacitor(device['name'], device['connectionPoints'], device['value'], device['deviceType']))
             elif device['deviceType'] == 'I':
@@ -111,6 +128,138 @@ class Spice:
         except:
             print('Solve DC Error!')
             
+    def solveDC(self, src, start, stop, incr, src2, start2, stop2, incr2):
+        self.DCValue = []
+        if not src2 == None:
+            arr = np.arange(start2, stop2, incr2)
+            for val in arr:
+                solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
+                DCValue, self.appendLine = solve.stampingDC(src, start, stop, incr, {
+                    'src2': src2, 
+                    'val2': val}
+                    )
+                self.DCValue.append(DCValue)
+        else:
+            solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
+            DCValue, self.appendLine = solve.stampingDC(src, start, stop, incr)
+            self.DCValue.append(DCValue)
+
+    def plotDCWithMatplotlib(self, start, stop, incr, abscissa = None, mannual=[]):
+        print(self.appendLine)
+        print(self.nodeDict)
+        if not abscissa == None:
+            abscissa = self.nodeDict[abscissa]
+        for command in self.commandList:
+            # print(command)
+            if command['type'] == 'PRINT' or command['type'] == 'PLOT':
+                if command['prtype'] == 'DC':
+                    for ov in command['ovs']:
+                        if ov['ovtype'] == 'V':
+                            node1 = self.nodeDict[ov['ovnodes'][0]]
+                            node2 = self.nodeDict[ov['ovnodes'][1]]
+                            self.plotDC(start, incr, stop, abscissa, {
+                                'mode': 'V',
+                                'nodes': (node1, node2)})
+                        elif ov['ovtype'] == 'I':
+                            # node1 = self.nodeDict['I' + ov['ovnodes'][0]]
+                            node1 = self.appendLine[ov['ovnodes'][0]]
+                            self.plotDC(start, incr, stop, abscissa, {
+                                'mode': 'I',
+                                'nodes': node1})
+
+    def plotDC(self, start = 0, incr = 0.1, stop = 1.5, abscissaNode=None, params = {}):
+        print(self.DCValue)
+        print('plotdc', params)
+        if params=={}:
+            return
+        plt.figure(figsize=(10, 9))
+        arr = np.arange(start, stop, incr)
+        if len(self.DCValue) == 1:
+            DCValue = self.DCValue[0]
+            if params['mode'] == 'V':
+                node1 = params['nodes'][0]
+                node2 = params['nodes'][1]
+                # print(node1, node2, self.tranValueFE)
+                y1 = DCValue[..., node1] - DCValue[..., node2]
+
+                # for val in arr:
+                print(DCValue, self.nodeDict)
+                # vinverter
+                if not abscissaNode == None:
+                    # x1 = DCValue[..., 2]
+                    x1 = DCValue[..., abscissaNode][1:]
+                else:
+                    x1 = np.arange(start, stop, incr)
+                # y1 = DCValue[..., 3]
+                plt.plot(x1, y1[1:], label="DC")
+
+                plt.legend(loc='best')
+                plt.title("demo") 
+                plt.xlabel("t") 
+                plt.ylabel("V") 
+            elif params['mode'] == 'I':
+                node1 = params['nodes']
+                y1 = DCValue[..., node1]
+                if not abscissaNode == None:
+                    # x1 = DCValue[..., 2]
+                    x1 = DCValue[..., abscissaNode][1:]
+                else:
+                    x1 = np.arange(start, stop, incr)
+
+                # nmos
+                # x1 = self.DCValue[..., 1] - self.DCValue[..., 0]
+                # pmos
+                # x1 = self.DCValue[..., 2] - self.DCValue[..., 0]
+
+                plt.plot(x1,y1[1:], label="DC")
+                plt.legend(loc='best')
+                plt.title("demo") 
+                plt.xlabel("t") 
+                plt.ylabel("I") 
+        else:
+            for k,DCValue in enumerate(self.DCValue):
+                if params['mode'] == 'V':
+                    node1 = params['nodes'][0]
+                    node2 = params['nodes'][1]
+                    # print(node1, node2, self.tranValueFE)
+                    y1 = DCValue[..., node1] - DCValue[..., node2]
+
+                    # for val in arr:
+                    print(DCValue, self.nodeDict)
+                    # vinverter
+                    if not abscissaNode == None:
+                        # x1 = DCValue[..., 2]
+                        x1 = DCValue[..., abscissaNode][1:]
+                    else:
+                        x1 = np.arange(start, stop, incr)
+                    # y1 = DCValue[..., 3]
+                    plt.plot(x1, y1[1:], label=("DC" + str(k)))
+
+                    # plt.legend(loc='best')
+                    # plt.title("demo") 
+                    # plt.xlabel("t") 
+                    # plt.ylabel("V") 
+                    plt.show()
+                elif params['mode'] == 'I':
+                    node1 = params['nodes']
+                    y1 = DCValue[..., node1]
+                    if not abscissaNode == None:
+                        # x1 = DCValue[..., 2]
+                        x1 = DCValue[..., abscissaNode][1:]
+                    else:
+                        x1 = np.arange(start, stop, incr)
+                    # nmos
+                    # x1 = DCValue[..., 1] - DCValue[..., 0]
+                    # pmos
+                    # x1 = DCValue[..., 2] - DCValue[..., 0]
+                    plt.plot(x1,y1[1:], label=("DC" + str(k)))
+                    plt.legend(loc='best')
+                    plt.title("demo") 
+                    plt.xlabel("t") 
+                    plt.ylabel("I") 
+        plt.show()
+
+
     # solve the function in transient, has three methods
     def solveTran(self, method = 'BE', step = 0.1, stop = 1500):
         # try:
