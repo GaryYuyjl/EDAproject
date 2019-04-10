@@ -70,13 +70,27 @@ class Spice:
             elif device['deviceType'] == 'D':
                 self.devices.append(Diode(device['name'], device['connectionPoints'], device['deviceType']))
             elif device['deviceType'] == 'M':
-                self.devices.append(Mosfet(device['name'], device['connectionPoints'], device['deviceType'], device['MNAME']))
+                if device.__contains__('W'):
+                    W = device['W']
+                else:
+                    W = None
+                if device.__contains__('L'):
+                    L = device['L']
+                else:
+                    L = None
+                self.devices.append(Mosfet(device['name'], device['connectionPoints'], device['deviceType'], device['MNAME'], W = W, L = L))
             elif device['deviceType'] == 'C':
                 self.devices.append(Capacitor(device['name'], device['connectionPoints'], device['value'], device['deviceType']))
             elif device['deviceType'] == 'I':
                 self.devices.append(ISource(device['name'], device['connectionPoints'], device['DC'], device['deviceType']))
             elif device['deviceType'] == 'V':
-                self.devices.append(VSource(device['name'], device['connectionPoints'], device['DC'], device['deviceType']))
+                sin = ()
+                pulse = ()
+                if device.__contains__('SIN'):
+                    sin = device['SIN']
+                if device.__contains__('PULSE'):
+                    pulse = device['PULSE']
+                self.devices.append(VSource(device['name'], device['connectionPoints'], device['DC'], device['deviceType'], sin, pulse))
             elif device['deviceType'] == 'E':
                 self.devices.append(VCVS(device['name'], device['connectionPoints'], device['value'], device['control'], device['deviceType']))
             elif device['deviceType'] == 'F':
@@ -94,6 +108,7 @@ class Spice:
                         break
                 self.devices.append(CCVS(device['name'], device['connectionPoints'], device['value'], controlDevice['connectionPoints'], device['control'], device['value'], device['deviceType']))
         # print(self.devices, '\n', self.nodeDict)
+        print(self.deviceList)
 
     # this function map the node to consecutive number
     def changeConnectionPoints(self):
@@ -122,12 +137,22 @@ class Spice:
 
     # this function generate the MNA
     def solve(self):
-        try:
+        # try:
             solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
-            solve.stamping()
-        except:
-            print('Solve DC Error!')
+            self.iteration = solve.stamping()
+        # except:
+            # print('Solve DC Error!')
             
+    def showIteration(self):
+        x = np.arange(len(self.iteration) - 1)
+        plt.plot(x, self.iteration[..., 2][1:], label='interation')
+        plt.legend(loc='best')
+        plt.title("demo") 
+        plt.xlabel("t") 
+        plt.ylabel("V") 
+        plt.show()
+
+    
     def solveDC(self, src, start, stop, incr, src2, start2, stop2, incr2):
         self.DCValue = []
         if not src2 == None:
@@ -172,7 +197,7 @@ class Spice:
         print('plotdc', params)
         if params=={}:
             return
-        plt.figure(figsize=(10, 9))
+        # plt.figure(figsize=(10, 9))
         arr = np.arange(start, stop, incr)
         if len(self.DCValue) == 1:
             DCValue = self.DCValue[0]
