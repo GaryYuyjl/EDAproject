@@ -193,11 +193,11 @@ class Spice:
                                 'nodes': node1})
 
     def plotDC(self, start = 0, incr = 0.1, stop = 1.5, abscissaNode=None, params = {}):
-        print(self.DCValue)
-        print('plotdc', params)
+        # print(self.DCValue)
+        # print('plotdc', params)
         if params=={}:
             return
-        # plt.figure(figsize=(10, 9))
+        plt.figure(figsize=(10, 6))
         arr = np.arange(start, stop, incr)
         if len(self.DCValue) == 1:
             DCValue = self.DCValue[0]
@@ -220,7 +220,7 @@ class Spice:
 
                 plt.legend(loc='best')
                 plt.title("demo") 
-                plt.xlabel("t") 
+                plt.xlabel("V") 
                 plt.ylabel("V") 
             elif params['mode'] == 'I':
                 node1 = params['nodes']
@@ -239,7 +239,7 @@ class Spice:
                 plt.plot(x1,y1[1:], label="DC")
                 plt.legend(loc='best')
                 plt.title("demo") 
-                plt.xlabel("t") 
+                plt.xlabel("V") 
                 plt.ylabel("I") 
         else:
             for k,DCValue in enumerate(self.DCValue):
@@ -280,7 +280,7 @@ class Spice:
                     plt.plot(x1,y1[1:], label=("DC" + str(k)))
                     plt.legend(loc='best')
                     plt.title("demo") 
-                    plt.xlabel("t") 
+                    plt.xlabel("V") 
                     plt.ylabel("I") 
         plt.show()
 
@@ -367,7 +367,7 @@ class Spice:
     def showNewtonRaphson(self):
         plt.figure(figsize=(10, 6))
         step = 0.00001
-        x = np.arange(0.011, 0.025, step)
+        x = np.arange(0.011, 0.03, step)
         y = 2 / 3 * x - 5 / 3 + np.exp(40 * x)
 
         for k, ite in enumerate(self.iteration):
@@ -385,7 +385,7 @@ class Spice:
             plt.plot(xpoints, ypoints, color='black')
             if k > 1:
                 lastx1 = self.iteration[k - 1][2]
-                lasty1 = 2 / 3 * lastx1 - 5 / 3 + np.exp(40 * lastx1)
+                lasty1 = 2 / 3 * lastx1 - 5 / 3 + np.exp(40 * x1)
                 line = [(lastx1, lasty1), (x1, y1)]
                 (xpoints, ypoints) = zip(*line)
                 plt.plot(xpoints, ypoints, color='black')

@@ -39,14 +39,14 @@ class Solve:
 
             for device in self.devices:
                 stampMatrix, tmpRHS, appendLine = device.load(stampMatrix, tmpRHS, appendLine, lastValue = x_)
-            print(stampMatrix, tmpRHS)
+            # print(stampMatrix, tmpRHS)
             x = np.linalg.solve(stampMatrix[1:, 1:], tmpRHS[1:])
             x = np.insert(x, 0, np.array([0]))
             error = np.sum(x - x_)
             x_ = x
             self.interation = np.append(self.interation, [x_.T], 0)
         # x = np.linalg.solve(self.stampMatrix, self.RHS)
-        print('stampMatrix\n', self.stampMatrix, self.RHS, self.interation)
+        # print('stampMatrix\n', self.stampMatrix, self.RHS, self.interation)
         revNodeDict = dict((v, k) for  k,v in self.nodeDict.items())
         revAppendLine = dict((v, k) for  k,v in self.appendLine.items())
         
@@ -61,32 +61,29 @@ class Solve:
     
     def addVoltageToInit(self, src, val, init):
         # in order to avoid singular matrix, I give the inital result a corresponding voltage
-        for k, v in enumerate(init):
-            if v==0:
-                init[k] = 0.1
+        # for k, v in enumerate(init):
+        #     if v == 0:
+                # init[k] = 0.1
         for device in self.devices:
             if device.name == src: # a voltage source need to be sweeped
                 init[device.NPlus] = val
             elif device.type == 'V':
-                print(device.NPlus)
                 init[device.NPlus] = device.value
 
     def stampingDC(self, src, start, stop, incr, sweep = {}):
-        print(sweep)
+        # print(sweep)
         if sweep.__contains__('src2'):
             src2 = sweep['src2']
             val2 = sweep['val2']
         else:
             src2 = ''
             val2 = None
-        print('src2', src2, val2)
+        # print('src2', src2, val2)
         arr = np.arange(start, stop, incr)
         for device in self.devices:
             if not (device.type == 'D' or device.type == 'M'):
                 self.stampMatrix, self.RHS, self.appendLine = device.loadDC(self.stampMatrix, self.RHS, self.appendLine)
         self.DCValue = np.zeros((1, self.stampMatrix.shape[1]))
-
-
         self.stampMatrix = np.zeros((self.length, self.length))
         self.RHS = np.zeros((self.length, 1))
         result = []
@@ -95,7 +92,7 @@ class Solve:
             error = 100
             x_ = self.DCValue[-1]
             self.addVoltageToInit(src, val, x_)
-            x_[0] = 0
+            # x_[0] = 0
             # x_[2] = val
             print('x_', x_)
             count = 0
@@ -120,7 +117,7 @@ class Solve:
                 x = np.insert(x, 0, np.array([0]))
                 error = np.sum(x - x_)
                 # print('sove', x)
-                print('error', error)
+                # print('error', error)
                 x_ = x
             self.DCValue = np.append(self.DCValue, [x_.T], 0)
         # print('dcvalue', self.DCValue)

@@ -97,7 +97,7 @@ class Mosfet(SuperDevice):
             self.W = 4e-6
             self.L = 1e-6
             self.vt = -0.4
-            self.lamda = -0.1
+            self.lamda = 0.1
         if not W == None:
             self.W = stringToNum(W)
         if not L == None:
@@ -129,13 +129,14 @@ class Mosfet(SuperDevice):
                 ids = 0
             elif vds <= vgs - self.vt:
                 # print(2, self.name, vds, vgs, self.vt, lastValue)
-                gm = self.k * self.W / self.L * 2 * vds * (1 + self.lamda * vds)
-                gds = self.k * self.W / self.L * (2 * (vgs - self.vt) + (4 * self.lamda * (vgs - self.vt) - 2) * vds - 3 * self.lamda * vds ** 2)
-                ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2) * (1 + self.lamda * vds)
                 if vds <= 0:
                     gm = self.k * self.W / self.L * 2 * vds
                     gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
                     ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2)
+                else:
+                    gm = self.k * self.W / self.L * 2 * vds * (1 + self.lamda * vds)
+                    gds = self.k * self.W / self.L * (2 * (vgs - self.vt) + (4 * self.lamda * (vgs - self.vt) - 2) * vds - 3 * self.lamda * vds ** 2)
+                    ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2) * (1 + self.lamda * vds)
             elif vds > vgs - self.vt:
                 # print(3, self.name, vds, vgs, self.vt, lastValue)
                 gm = self.k * self.W / self.L * 2 * (vgs - self.vt) * (1 + self.lamda * vds)
@@ -154,14 +155,15 @@ class Mosfet(SuperDevice):
                 gds = 0
             elif vds >= vgs - self.vt:
                 # print(5, self.name, vds, vgs, self.vt, lastValue)
-                gm = self.k * self.W / self.L * 2 * vds * (1 - self.lamda * vds)
-                ### 重新算一下
-                gds = self.k * self.W / self.L * (2 * (vgs - self.vt) + (-4 * self.lamda * (vgs - self.vt) - 2) * vds + 3 * self.lamda * vds ** 2)
-                ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2) * (1 - self.lamda * vds)
                 if vds >= 0:
                     gm = self.k * self.W / self.L * 2 * vds
                     gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
                     ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2)
+                else:
+                    gm = self.k * self.W / self.L * 2 * vds * (1 - self.lamda * vds)
+                    ### 重新算一下
+                    gds = self.k * self.W / self.L * (2 * (vgs - self.vt) + (-4 * self.lamda * (vgs - self.vt) - 2) * vds + 3 * self.lamda * vds ** 2)
+                    ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2) * (1 - self.lamda * vds)
             elif vds < vgs - self.vt:
                 # print(6, self.name, vds, vgs, self.vt, lastValue)
                 gm = self.k * self.W / self.L * 2 * (-vgs + self.vt) * (1 - self.lamda * vds)
