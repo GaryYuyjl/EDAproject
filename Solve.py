@@ -61,8 +61,9 @@ class Solve:
     
     def addVoltageToInit(self, src, val, init):
         # in order to avoid singular matrix, I give the inital result a corresponding voltage
-        # for k, v in enumerate(init):
-        #     init[k] = np.random.random() / 10
+        for k, v in enumerate(init):
+            if v==0:
+                init[k] = 0.1
         for device in self.devices:
             if device.name == src: # a voltage source need to be sweeped
                 init[device.NPlus] = val
@@ -94,11 +95,11 @@ class Solve:
             error = 100
             x_ = self.DCValue[-1]
             self.addVoltageToInit(src, val, x_)
-            # x_[1] = 2
+            x_[0] = 0
             # x_[2] = val
             print('x_', x_)
             count = 0
-            while abs(error) > 1e-10:
+            while abs(error) > 1e-5:
                 count += 1
                 if count > 1000:
                     print('wrong')
@@ -114,7 +115,7 @@ class Solve:
                         stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadDC(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, lastValue = x_, dcValue = val2)
                     else:
                         stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadDC(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, lastValue = x_, dcValue = None)
-                print(stampMatrixWithNonlinear[1:, 1:], tmpRHS[1:])
+                # print(stampMatrixWithNonlinear[1:, 1:], tmpRHS[1:])
                 x = np.linalg.solve(stampMatrixWithNonlinear[1:, 1:], tmpRHS[1:])
                 x = np.insert(x, 0, np.array([0]))
                 error = np.sum(x - x_)
@@ -185,11 +186,12 @@ class Solve:
             error = 100
             # x_ = np.zeros((len(self.stampMatrix), 1))
             x_ = self.tranValueBE[-1]
+            xnoInterate = self.tranValueBE[-1]
             for src in self.devices:
                 if src.type == 'V':
                     self.addVoltageToInit(src.name, src.value, x_)
             count = 0
-            while abs(error) > 1e-1:
+            while abs(error) > 1e-3:
                 count += 1
                 if count > 1000:
                     print('wrong')
@@ -201,7 +203,11 @@ class Solve:
                 tmpRHS = copy.deepcopy(self.RHS)
                 RHSAppendLine = {}  
                 for device in self.devices:
-                    stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadBE(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, t = i * step, lastValue= x_)
+                    if device.type == 'D' or device.type == 'M':
+                        # print(3)
+                        stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadBE(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, t = i * step, lastValue= x_)
+                    else:
+                        stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadBE(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, t = i * step, lastValue= xnoInterate)
                 x = np.linalg.solve(stampMatrixWithNonlinear[1:, 1:], tmpRHS[1:])
                 x = np.insert(x, 0, np.array([0]))
                 error = np.sum(x - x_)
@@ -228,11 +234,12 @@ class Solve:
             error = 100
             # x_ = np.zeros((len(self.stampMatrix), 1))
             x_ = self.tranValueFE[-1]
+            xnoInterate = self.tranValueFE[-1]
             for src in self.devices:
                 if src.type == 'V':
                     self.addVoltageToInit(src.name, src.value, x_)
             count = 0
-            while abs(error) > 1e-1:
+            while abs(error) > 1e-3:
                 count += 1
                 if count > 1000:
                     print('wrong')
@@ -244,7 +251,11 @@ class Solve:
                 tmpRHS = copy.deepcopy(self.RHS)
                 RHSAppendLine = {}  
                 for device in self.devices:
-                    stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadFE(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, t = i * step, lastValue= x_)
+                    if device.type == 'D' or device.type == 'M':
+                        # print(3)
+                        stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadFE(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, t = i * step, lastValue= x_)
+                    else:
+                        stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadFE(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, t = i * step, lastValue= xnoInterate)
                 x = np.linalg.solve(stampMatrixWithNonlinear[1:, 1:], tmpRHS[1:])
                 x = np.insert(x, 0, np.array([0]))
                 error = np.sum(x - x_)
@@ -271,11 +282,12 @@ class Solve:
             error = 100
             # x_ = np.zeros((len(self.stampMatrix), 1))
             x_ = self.tranValueTR[-1]
+            xnoInterate = self.tranValueTR[-1]
             for src in self.devices:
                 if src.type == 'V':
                     self.addVoltageToInit(src.name, src.value, x_)
             count = 0
-            while abs(error) > 1e-1:
+            while abs(error) > 1e-3:
                 count += 1
                 if count > 1000:
                     print('wrong')
@@ -287,7 +299,11 @@ class Solve:
                 tmpRHS = copy.deepcopy(self.RHS)
                 RHSAppendLine = {}  
                 for device in self.devices:
-                    stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadTR(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, t = i * step, lastValue= x_)
+                    if device.type == 'D' or device.type == 'M':
+                        # print(3)
+                        stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadTR(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, t = i * step, lastValue= x_)
+                    else:
+                        stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadTR(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, t = i * step, lastValue= xnoInterate)
                 x = np.linalg.solve(stampMatrixWithNonlinear[1:, 1:], tmpRHS[1:])
                 x = np.insert(x, 0, np.array([0]))
                 error = np.sum(x - x_)

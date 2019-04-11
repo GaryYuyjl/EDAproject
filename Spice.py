@@ -363,3 +363,39 @@ class Spice:
             plt.xlabel("t") 
             plt.ylabel("I") 
             plt.show()
+
+    def showNewtonRaphson(self):
+        plt.figure(figsize=(10, 6))
+        step = 0.00001
+        x = np.arange(0.011, 0.025, step)
+        y = 2 / 3 * x - 5 / 3 + np.exp(40 * x)
+
+        for k, ite in enumerate(self.iteration):
+            # x1 = ite[2]
+            if k == 0:
+                continue
+            x1 = ite[2]
+            y1 = 2 / 3 * x1 - 5 / 3 + np.exp(40 * x1)
+            # y1 = (2 / 3 + 40 * np.exp(40 * x1)) * (x - x1) + (2 / 3 * x1 - 5 / 3 + np.exp(40 * x1))
+            # plt.plot(x, y1, label="mannual")
+
+            print(x1, y1)
+            line = [(x1, 0), (x1, y1)]
+            (xpoints, ypoints) = zip(*line)
+            plt.plot(xpoints, ypoints, color='black')
+            if k > 1:
+                lastx1 = self.iteration[k - 1][2]
+                lasty1 = 2 / 3 * lastx1 - 5 / 3 + np.exp(40 * lastx1)
+                line = [(lastx1, lasty1), (x1, y1)]
+                (xpoints, ypoints) = zip(*line)
+                plt.plot(xpoints, ypoints, color='black')
+
+        zero = np.zeros((len(x)))
+        # print(y)
+        print('iteration', self.iteration)
+        plt.plot(x, zero, label="mannual")
+        plt.plot(x, y, label="mannual")
+        plt.title("Newton Raphson") 
+        plt.xlabel("V") 
+        plt.ylabel("I") 
+        plt.show()

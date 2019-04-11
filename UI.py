@@ -58,7 +58,7 @@ class GUI(QMainWindow):
         
         # self.consoleText.setGeometry(0, 500, 1200, 300)
         self.consoleText.setReadOnly(True)
-        self.consoleText.setPlainText('This is console panel. All of the information will be printed here. \n')
+        self.consoleText.setPlainText('CONSOLE. \n')
         
         grid.addWidget(self.textEdit, 1, 0)
         grid.addWidget(self.consoleText, 1, 1)

@@ -123,12 +123,12 @@ class Mosfet(SuperDevice):
         # print(self.mname[0], vgs, vds)
         if self.mname[0] == 'N':
             if vgs <= self.vt:
-                print(1, self.name, vds, vgs, self.vt, lastValue)
+                # print(1, self.name, vds, vgs, self.vt, lastValue)
                 gm = 0
                 gds = 0
                 ids = 0
             elif vds <= vgs - self.vt:
-                print(2, self.name, vds, vgs, self.vt, lastValue)
+                # print(2, self.name, vds, vgs, self.vt, lastValue)
                 gm = self.k * self.W / self.L * 2 * vds * (1 + self.lamda * vds)
                 gds = self.k * self.W / self.L * (2 * (vgs - self.vt) + (4 * self.lamda * (vgs - self.vt) - 2) * vds - 3 * self.lamda * vds ** 2)
                 ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2) * (1 + self.lamda * vds)
@@ -137,18 +137,23 @@ class Mosfet(SuperDevice):
                     gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
                     ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2)
             elif vds > vgs - self.vt:
-                print(3, self.name, vds, vgs, self.vt, lastValue)
+                # print(3, self.name, vds, vgs, self.vt, lastValue)
                 gm = self.k * self.W / self.L * 2 * (vgs - self.vt) * (1 + self.lamda * vds)
                 gds = self.k * self.W / self.L * (vgs - self.vt) ** 2 * self.lamda
                 ids = self.k * self.W / self.L * (vgs - self.vt) ** 2 * (1 + self.lamda * vds)
+                # if vds >= 0:
+                #     gm = self.k * self.W / self.L * 2 * (vgs - self.vt)
+                #     gds = 0
+                #     ids = self.k * self.W / self.L * (vgs - self.vt) ** 2
+
         elif self.mname[0] == 'P':
             if vgs >= self.vt:
-                print(4, self.name, vds, vgs, self.vt, lastValue)
+                # print(4, self.name, vds, vgs, self.vt, lastValue)
                 ids = 0
                 gm = 0
                 gds = 0
             elif vds >= vgs - self.vt:
-                print(5, self.name, vds, vgs, self.vt, lastValue)
+                # print(5, self.name, vds, vgs, self.vt, lastValue)
                 gm = self.k * self.W / self.L * 2 * vds * (1 - self.lamda * vds)
                 ### 重新算一下
                 gds = self.k * self.W / self.L * (2 * (vgs - self.vt) + (-4 * self.lamda * (vgs - self.vt) - 2) * vds + 3 * self.lamda * vds ** 2)
@@ -158,10 +163,14 @@ class Mosfet(SuperDevice):
                     gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
                     ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2)
             elif vds < vgs - self.vt:
-                print(6, self.name, vds, vgs, self.vt, lastValue)
+                # print(6, self.name, vds, vgs, self.vt, lastValue)
                 gm = self.k * self.W / self.L * 2 * (-vgs + self.vt) * (1 - self.lamda * vds)
                 gds = self.k * self.W / self.L * (vgs - self.vt) ** 2 * self.lamda
                 ids = self.k * self.W / self.L * (-vgs + self.vt) ** 2 * (1 - self.lamda * vds)
+                # if vds >= 0:
+                #     gm = self.k * self.W / self.L * 2 * (vgs - self.vt)
+                #     gds = 0
+                #     ids = self.k * self.W / self.L * (vgs - self.vt) ** 2
         stampMatrix[self.D][self.D] += gds
         stampMatrix[self.S][self.D] -= gds
         stampMatrix[self.D][self.S] -= gds + gm
@@ -797,6 +806,12 @@ class VSource(SuperDevice):
             RHS = np.vstack((RHS, np.array([dcValue])))
         return stampMatrix, RHS, appendLine
 
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, dcValue)
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, dcValue)
+
+
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
         if not appendLine.__contains__(self.name):
             index = stampMatrix.shape[0]
@@ -852,7 +867,12 @@ class VCCS(SuperDevice):
         stampMatrix[self.NMinus][self.NCPlus] -= self.value
         stampMatrix[self.NMinus][self.NCMinus] += self.value
         return stampMatrix, RHS, appendLine
-    
+    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
         stampMatrix[self.NPlus][self.NCPlus] += self.value
         stampMatrix[self.NPlus][self.NCMinus] -= self.value
@@ -910,7 +930,12 @@ class VCVS(SuperDevice):
         RHS = np.vstack((RHS, np.array([0])))
         appendLine[self.name] = index
         return stampMatrix, RHS, appendLine
-    
+    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
         index = stampMatrix.shape[0]
         stampMatrix = expandMatrix(stampMatrix, 1)
@@ -987,7 +1012,12 @@ class CCCS(SuperDevice):
             stampMatrix[self.NMinus][index] -= self.value
             
         return stampMatrix, RHS, appendLine
-
+    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
         if not appendLine.__contains__(self.control):
             index = stampMatrix.shape[0]
@@ -1090,6 +1120,13 @@ class CCVS(SuperDevice):
             RHS = np.vstack((RHS, np.array([0]))) # add vc
             appendLine[self.name] = indexK
         return stampMatrix, RHS, appendLine
+    
+    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
 
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
         if not appendLine.__contains__(self.control):
