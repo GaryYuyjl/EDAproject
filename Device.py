@@ -10,7 +10,27 @@ class SuperDevice:
         self.name = name
         self.type = _type
 
+    def getVoltage(self, lastvalue):
+        return lastvalue[self.NPlus] - lastvalue[self.NMinus]
+
+    def getCurrent(self, lastValue, nodeDict):
+        if nodeDict.__contains__(self.name):
+            index = nodeDict[self.name]
+            return lastValue[index]
+        else:
+            return 0
+
     def load(self):
+        pass
+    
+    def loadDC(self):
+        pass
+    
+    def loadBE(self):
+        pass
+    def loadTR(self):
+        pass
+    def loadFE(self):
         pass
 
 class Diode(SuperDevice):
@@ -97,7 +117,7 @@ class Mosfet(SuperDevice):
             self.W = 4e-6
             self.L = 1e-6
             self.vt = -0.4
-            self.lamda = 0.1
+            self.lamda = -0.1
         if not W == None:
             self.W = stringToNum(W)
         if not L == None:
@@ -130,9 +150,12 @@ class Mosfet(SuperDevice):
             elif vds <= vgs - self.vt:
                 # print(2, self.name, vds, vgs, self.vt, lastValue)
                 if vds <= 0:
-                    gm = self.k * self.W / self.L * 2 * vds
-                    gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
-                    ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2)
+                    # gm = self.k * self.W / self.L * 2 * vds
+                    # gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
+                    # ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2)
+                    gm = 0
+                    gds = 0
+                    ids = 0
                 else:
                     gm = self.k * self.W / self.L * 2 * vds * (1 + self.lamda * vds)
                     gds = self.k * self.W / self.L * (2 * (vgs - self.vt) + (4 * self.lamda * (vgs - self.vt) - 2) * vds - 3 * self.lamda * vds ** 2)
@@ -156,19 +179,22 @@ class Mosfet(SuperDevice):
             elif vds >= vgs - self.vt:
                 # print(5, self.name, vds, vgs, self.vt, lastValue)
                 if vds >= 0:
-                    gm = self.k * self.W / self.L * 2 * vds
-                    gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
-                    ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2)
+                    gm = 0
+                    gds = 0
+                    ids = 0
+                    # gm = self.k * self.W / self.L * 2 * vds
+                    # gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
+                    # ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2)
                 else:
-                    gm = self.k * self.W / self.L * 2 * vds * (1 - self.lamda * vds)
+                    gm = self.k * self.W / self.L * 2 * vds * (1 + self.lamda * vds)
                     ### 重新算一下
                     gds = self.k * self.W / self.L * (2 * (vgs - self.vt) + (-4 * self.lamda * (vgs - self.vt) - 2) * vds + 3 * self.lamda * vds ** 2)
-                    ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2) * (1 - self.lamda * vds)
+                    ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2) * (1 + self.lamda * vds)
             elif vds < vgs - self.vt:
                 # print(6, self.name, vds, vgs, self.vt, lastValue)
-                gm = self.k * self.W / self.L * 2 * (-vgs + self.vt) * (1 - self.lamda * vds)
+                gm = self.k * self.W / self.L * 2 * (-vgs + self.vt) * (1 + self.lamda * vds)
                 gds = self.k * self.W / self.L * (vgs - self.vt) ** 2 * self.lamda
-                ids = self.k * self.W / self.L * (-vgs + self.vt) ** 2 * (1 - self.lamda * vds)
+                ids = self.k * self.W / self.L * (-vgs + self.vt) ** 2 * (1 + self.lamda * vds)
                 # if vds >= 0:
                 #     gm = self.k * self.W / self.L * 2 * (vgs - self.vt)
                 #     gds = 0
@@ -282,6 +308,11 @@ class Resistor(SuperDevice):
     
     def loadBE(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], dcValue = None):
         return self.loadDC(stampMatrix, RHS, appendLine, lastValue, dcValue)
+    def loadBETimeStepControl(self, stampMatrix, RHS, appendLine, h, fakeTimes, fakeTranValue, t = 0, lastValue=[], dcValue = None):
+        target = t - h
+        targetIndex = np.argmin(abs(np.array(fakeTimes) - target))
+        lastValue = fakeTranValue[targetIndex]
+        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, dcValue)
 
     def loadFE(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], dcValue = None):
         return self.loadDC(stampMatrix, RHS, appendLine, lastValue, dcValue)
@@ -313,19 +344,27 @@ class Capacitor(SuperDevice):
         self.value = value
     
     def load(self, stampMatrix, RHS, appendLine, lastValue=[]):
-        stampMatrix[self.NPlus][self.NPlus] += self.value * 1j
-        stampMatrix[self.NPlus][self.NMinus] -= self.value * 1j
-        stampMatrix[self.NMinus][self.NPlus] -= self.value * 1j
-        stampMatrix[self.NMinus][self.NMinus] += self.value * 1j
+        stampMatrix[self.NPlus][self.NPlus] += self.value * 0
+        stampMatrix[self.NPlus][self.NMinus] -= self.value * 0
+        stampMatrix[self.NMinus][self.NPlus] -= self.value * 0
+        stampMatrix[self.NMinus][self.NMinus] += self.value * 0
+        # stampMatrix[self.NPlus][self.NPlus] += self.value * 1j
+        # stampMatrix[self.NPlus][self.NMinus] -= self.value * 1j
+        # stampMatrix[self.NMinus][self.NPlus] -= self.value * 1j
+        # stampMatrix[self.NMinus][self.NMinus] += self.value * 1j
         return stampMatrix, RHS, appendLine
 
     def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, dcValue = None):
         if dcValue == None:
             dcValue = self.value
-        stampMatrix[self.NPlus][self.NPlus] += self.value * 1j
-        stampMatrix[self.NPlus][self.NMinus] -= self.value * 1j
-        stampMatrix[self.NMinus][self.NPlus] -= self.value * 1j
-        stampMatrix[self.NMinus][self.NMinus] += self.value * 1j
+        stampMatrix[self.NPlus][self.NPlus] += self.value * 0
+        stampMatrix[self.NPlus][self.NMinus] -= self.value * 0
+        stampMatrix[self.NMinus][self.NPlus] -= self.value * 0
+        stampMatrix[self.NMinus][self.NMinus] += self.value * 0
+        # stampMatrix[self.NPlus][self.NPlus] += self.value * 1j
+        # stampMatrix[self.NPlus][self.NMinus] -= self.value * 1j
+        # stampMatrix[self.NMinus][self.NPlus] -= self.value * 1j
+        # stampMatrix[self.NMinus][self.NMinus] += self.value * 1j
         return stampMatrix, RHS, appendLine
 
     '''TRAN BE
@@ -340,6 +379,28 @@ class Capacitor(SuperDevice):
     '''
 
     def loadBE(self, stampMatrix, RHS, appendLine, h, t = 0, lastValue=[], dcValue = None):
+        if dcValue == None:
+            dcValue = self.value
+        index = stampMatrix.shape[0]
+        stampMatrix = expandMatrix(stampMatrix, 1)
+
+        stampMatrix[self.NPlus][index] += 1
+        stampMatrix[self.NMinus][index] -= 1
+        stampMatrix[index][self.NPlus] += self.value / h
+        stampMatrix[index][self.NMinus] -= self.value / h
+        stampMatrix[index][index] -= 1
+        if len(lastValue):
+            v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
+            add = np.array([self.value / h * v_tMinush])
+            RHS = np.vstack((RHS, add)) # add vc
+        appendLine[self.name] = index
+
+        return stampMatrix, RHS, appendLine
+
+    def loadBETimeStepControl(self, stampMatrix, RHS, appendLine, h, fakeTimes, fakeTranValue, t = 0, lastValue=[], dcValue = None):
+        target = t - h
+        targetIndex = np.argmin(abs(np.array(fakeTimes) - target))
+        lastValue = fakeTranValue[targetIndex]
         if dcValue == None:
             dcValue = self.value
         index = stampMatrix.shape[0]
@@ -533,6 +594,26 @@ class Inductor(SuperDevice):
             RHS = np.vstack((RHS, np.array([-self.value / h * i_tMinush]))) # add vc
         return stampMatrix, RHS, appendLine
 
+    def loadBETimeStepControl(self, stampMatrix, RHS, appendLine, h, fakeTimes, fakeTranValue, t = 0, lastValue=[], dcValue = None):
+        target = t - h
+        targetIndex = np.argmin(abs(np.array(fakeTimes) - target))
+        lastValue = fakeTranValue[targetIndex]
+        if dcValue == None:
+            dcValue = self.value
+        index = stampMatrix.shape[0]
+        stampMatrix = expandMatrix(stampMatrix, 1)
+
+        stampMatrix[self.NPlus][index] += 1
+        stampMatrix[self.NMinus][index] -= 1
+        stampMatrix[index][self.NPlus] += 1
+        stampMatrix[index][self.NMinus] -= 1
+        stampMatrix[index][index] -= self.value / h
+        appendLine[self.name] = index
+        if len(lastValue):
+            i_tMinush = lastValue[index] 
+            RHS = np.vstack((RHS, np.array([-self.value / h * i_tMinush]))) # add vc
+        return stampMatrix, RHS, appendLine
+
     def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
         if dcValue == None:
             dcValue = self.value
@@ -688,6 +769,10 @@ class ISource(SuperDevice):
         RHS[self.NPlus][0] -= self.value
         RHS[self.NMinus][0] += self.value
         return stampMatrix, RHS, appendLine
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, dcValue)
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, dcValue)
 
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.load(stampMatrix, RHS, appendLine)
@@ -788,11 +873,55 @@ class VSource(SuperDevice):
                 else:
                     dcValue = self.sin_v0 + self.sin_va * np.exp(-(t - self.sin_td) * self.sin_theta) * np.sin(2 * np.pi * self.sin_freq * (t - self.sin_td))
             elif self.pulse:
-                if t >self.pulse_td and t < self.pulse_td+self.pulse_pw:
-                    dcValue = self.pulse_v2
-                else:
+                if t <= self.pulse_td:
                     dcValue = self.pulse_v1
-                print('dcvalue', dcValue, t, self.pulse_td, self.pulse_td+self.pulse_pw)
+                else:
+                    time = (t - self.pulse_td) % self.pulse_per
+                    if time <= self.pulse_tr:
+                        dcValue = (self.pulse_v2 - self.pulse_v1) / self.pulse_tr * time + self.pulse_v1
+                    elif time <= self.pulse_tr + self.pulse_pw:
+                        dcValue = self.pulse_v2
+                    elif time <= self.pulse_tr + self.pulse_pw + self.pulse_tf:
+                        dcValue = (self.pulse_v2 - self.pulse_v1) / self.pulse_tf * (self.pulse_tf + self.pulse_pw + self.pulse_tr - time) + self.pulse_v1 
+                    else:
+                        dcValue = self.pulse_v1
+            else:
+                dcValue = self.value
+        if not appendLine.__contains__(self.name):
+            index = stampMatrix.shape[0]
+            # print(stampMatrix.shape)
+            stampMatrix = expandMatrix(stampMatrix, 1)
+            # print(stampMatrix.shape, self.NPlus, index)
+            stampMatrix[self.NPlus][index] += 1
+            stampMatrix[self.NMinus][index] -= 1
+            stampMatrix[index][self.NPlus] += 1
+            stampMatrix[index][self.NMinus] -= 1
+            appendLine[self.name] = index
+            RHS = np.vstack((RHS, np.array([dcValue])))
+        return stampMatrix, RHS, appendLine
+    def loadBETimeStepControl(self, stampMatrix, RHS, appendLine, h, fakeTimes, fakeTranValue, t = 0, lastValue=[], dcValue = None):
+        target = t - h
+        targetIndex = np.argmin(abs(np.array(fakeTimes) - target))
+        lastValue = fakeTranValue[targetIndex]
+        if dcValue == None:
+            if self.sin == True:
+                if t <= self.sin_td:
+                    dcValue = self.sin_v0
+                else:
+                    dcValue = self.sin_v0 + self.sin_va * np.exp(-(t - self.sin_td) * self.sin_theta) * np.sin(2 * np.pi * self.sin_freq * (t - self.sin_td))
+            elif self.pulse:
+                if t <= self.pulse_td:
+                    dcValue = self.pulse_v1
+                else:
+                    time = (t - self.pulse_td) % self.pulse_per
+                    if time <= self.pulse_tr:
+                        dcValue = (self.pulse_v2 - self.pulse_v1) / self.pulse_tr * time + self.pulse_v1
+                    elif time <= self.pulse_tr + self.pulse_pw:
+                        dcValue = self.pulse_v2
+                    elif time <= self.pulse_tr + self.pulse_pw + self.pulse_tf:
+                        dcValue = (self.pulse_v2 - self.pulse_v1) / self.pulse_tf * (self.pulse_tf + self.pulse_pw + self.pulse_tr - time) + self.pulse_v1 
+                    else:
+                        dcValue = self.pulse_v1
             else:
                 dcValue = self.value
         if not appendLine.__contains__(self.name):
@@ -812,7 +941,6 @@ class VSource(SuperDevice):
         return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, dcValue)
     def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
         return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, dcValue)
-
 
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
         if not appendLine.__contains__(self.name):

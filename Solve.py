@@ -2,6 +2,7 @@ import numpy as np
 from Device import *
 import copy
 # generate the MNA stamps and solve the matrix
+
 class Solve:
     def __init__(self, nodeDict, deviceList, commandList, devices):
         self.nodeDict = nodeDict
@@ -16,17 +17,24 @@ class Solve:
 
         self.appendLine = {}
 
+    def clear(self):
+        self.tranValueBE = np.zeros((1, self.stampMatrix.shape[1]))
+        self.stampMatrix = np.zeros((self.length, self.length))
+        self.RHS = np.zeros((self.length, 1))
+        self.appendLine = {}
+
+
     # solve the DC
-    def stamping(self):
+    def stamping(self, printMNA = False):
         # generate the MNA matrix by calling load function in each device
         for device in self.devices:
             self.stampMatrix, self.RHS, self.appendLine = device.load(self.stampMatrix, self.RHS, self.appendLine)
-        self.interation = np.zeros((1, self.stampMatrix.shape[1]))
+        self.iteration = np.zeros((1, self.stampMatrix.shape[1]))
         self.stampMatrix = np.zeros((self.length, self.length))
         self.RHS = np.zeros((self.length, 1))
 
         error = 100
-        x_ = self.interation[-1]
+        x_ = self.iteration[-1]
         count = 0
         while abs(error) > 1e-10:
             count += 1
@@ -40,25 +48,19 @@ class Solve:
             for device in self.devices:
                 stampMatrix, tmpRHS, appendLine = device.load(stampMatrix, tmpRHS, appendLine, lastValue = x_)
             # print(stampMatrix, tmpRHS)
+            if printMNA:
+                print('iteration', len(self.iteration), '\n', stampMatrix)
             x = np.linalg.solve(stampMatrix[1:, 1:], tmpRHS[1:])
             x = np.insert(x, 0, np.array([0]))
             error = np.sum(x - x_)
             x_ = x
-            self.interation = np.append(self.interation, [x_.T], 0)
+            self.iteration = np.append(self.iteration, [x_.T], 0)
         # x = np.linalg.solve(self.stampMatrix, self.RHS)
-        # print('stampMatrix\n', self.stampMatrix, self.RHS, self.interation)
-        revNodeDict = dict((v, k) for  k,v in self.nodeDict.items())
-        revAppendLine = dict((v, k) for  k,v in self.appendLine.items())
-        
-        return self.interation
+        # print('stampMatrix\n', self.stampMatrix, self.RHS, self.iteration)
+        print('result: \n', self.iteration[-1])        
+        return self.iteration
 
-        # for k, v in revNodeDict.items():
-        #     if k == 0:
-        #         continue
-        #     print('node', v, ' = ', x[k - 1][0])
-        # for k , v in revAppendLine.items():
-        #     print('I%s = %lf' % (v, x[k - 1][0] ))
-    
+    # to give the inital value for the iteration
     def addVoltageToInit(self, src, val, init):
         # in order to avoid singular matrix, I give the inital result a corresponding voltage
         # for k, v in enumerate(init):
@@ -91,10 +93,21 @@ class Solve:
         for val in arr:
             error = 100
             x_ = self.DCValue[-1]
-            self.addVoltageToInit(src, val, x_)
+            
+            # handle nodeset
+            hasNodeset = False
+            for command in self.commandList:
+                if command['type'] == 'NODESET':
+                    hasNodeset = True
+                    for key in command:
+                        if self.nodeDict.__contains__(key):
+                            x_[self.nodeDict[key]] = stringToNum(command[key])
+            if not hasNodeset:
+                self.addVoltageToInit(src, val, x_)
+            print(x_)
             # x_[0] = 0
             # x_[2] = val
-            print('x_', x_)
+            # print('x_', x_)
             count = 0
             while abs(error) > 1e-5:
                 count += 1
@@ -123,54 +136,109 @@ class Solve:
         # print('dcvalue', self.DCValue)
         return self.DCValue, self.appendLine
 
-    '''
     #  solve TRAN with BE
-    def stampingBE(self, step, stop):
-        print(self.deviceList)
-        # generate the unchangeable MNA matrix without nonlinear device
+    def stampingBEWithStepControl(self, step, stop):
+        stopTime = step * stop
+        # how to define the epsilon
+        epsilon = step * 10000
+        nowTime = 0
+        times = [nowTime]
+        # to get more points for the time step control
+        fakeStep = step / 16
+        fakeTranValue, fakeAppendLine, fakeTimes = self.stampingBE(fakeStep, stop * 16)
+
+        self.clear()
+        
+        print(self.stampMatrix, self.RHS, self.appendLine)
         for device in self.devices:
             if not (device.type == 'D' or device.type == 'M'):
-                self.stampMatrix, self.RHS, self.appendLine = device.loadBEMatrix(self.stampMatrix, self.RHS, self.appendLine, step)
-        # print('stamp matrix', self.stampMatrix)
+                self.stampMatrix, self.RHS, self.appendLine = device.loadBE(self.stampMatrix, self.RHS, self.appendLine, step)
         self.tranValueBE = np.zeros((1, self.stampMatrix.shape[1]))
+        self.stampMatrix = np.zeros((self.length, self.length))
+        self.RHS = np.zeros((self.length, 1))
 
-        for i in range(stop):
+        # for i in range(stop):
+        # transient BE
+        while nowTime < stopTime:
             error = 100
             # x_ = np.zeros((len(self.stampMatrix), 1))
             x_ = self.tranValueBE[-1]
             xnoInterate = self.tranValueBE[-1]
-            while abs(error) > 1e-5:
-                # print(x_)
-                # add the nonlinear device
-                stampMatrixWithNonlinear = copy.deepcopy(self.stampMatrix)
-                tmpRHS = copy.deepcopy(self.RHS)
-                RHSAppendLine = {}  
-                for device in self.devices:
-                    if device.type == 'D' or device.type == 'M':
-                        # print(2)
-                        stampMatrixWithNonlinear, tmpRHS, self.appendLine = device.loadBEMatrix(stampMatrixWithNonlinear, tmpRHS, self.appendLine, step, x_)
-                for device in self.devices:
-                    if device.type == 'D' or device.type == 'M':
-                        # print(3)
-                        tmpRHS, RHSAppendLine = device.loadBERHS(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, x_)
-                    else:
-                        tmpRHS, RHSAppendLine = device.loadBERHS(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, xnoInterate)
-                # print(stampMatrixWithNonlinear, '\n', self.stampMatrix, '\n' ,tmpRHS)
-                x = np.linalg.solve(stampMatrixWithNonlinear[1:, 1:], tmpRHS[1:])
-                x = np.insert(x, 0, np.array([0]))
-                error = np.sum(x - x_)
-                # print('sove', x)
-                # print('error',i , error)
-                x_ = x
-            self.tranValueBE = np.append(self.tranValueBE, [x_.T], 0)
 
-        print(self.tranValueBE)
+            # add time step control
+            tmpStep = step
+
+            # Time step control
+            while True:
+                needChangeStepFlag = False
+                for src in self.devices:
+                    if src.type == 'V':
+                        self.addVoltageToInit(src.name, src.value, x_)
+                count = 0
+                # N-R
+                while abs(error) > 1e-3:
+                    count += 1
+                    if count > 1000:
+                        print('wrong')
+                        break
+
+                    # add the nonlinear device
+                    stampMatrixWithNonlinear = copy.deepcopy(self.stampMatrix)
+                    tmpRHS = copy.deepcopy(self.RHS)
+                    RHSAppendLine = {}  
+                    for device in self.devices:
+                        if device.type == 'D' or device.type == 'M':
+                            # print(3)
+                            stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadBE(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, tmpStep, t = nowTime, lastValue= x_)
+                        else:
+                            stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadBETimeStepControl(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, tmpStep, fakeTimes, fakeTranValue, t = nowTime, lastValue= xnoInterate)
+                    x = np.linalg.solve(stampMatrixWithNonlinear[1:, 1:], tmpRHS[1:])
+                    x = np.insert(x, 0, np.array([0]))
+                    error = np.sum(x - x_)
+                    # print('sove', x)
+                    # print('error',i , error)
+                    x_ = x
+                
+                # determine this step is available or not
+                tnplus1 = x_
+                tn = self.tranValueBE[-1]
+                for device in self.devices:
+                    if device.type == 'L':
+                        if device.getVoltage(tnplus1) - device.getVoltage(tn) == 0:
+                            continue
+                        right = 2 * device.value / abs(device.getVoltage(tnplus1) - device.getVoltage(tn)) * epsilon
+                        left = tmpStep
+                        if left > right:
+                            needChangeStepFlag = True
+                    elif device.type == 'C':
+                        # print('tnplus1', tnplus1)
+                        # print('tn', tn)
+                        if device.getCurrent(tnplus1, self.nodeDict) - device.getCurrent(tn, self.nodeDict) == 0:
+                            continue
+                        right = 2 * device.value / abs(device.getCurrent(tnplus1, self.nodeDict) - device.getCurrent(tn, self.nodeDict)) * epsilon
+                        left = tmpStep
+                        if left > right:
+                            needChangeStepFlag = True
+                if not needChangeStepFlag:
+                    break
+                else:
+                    tmpStep /= 2
+                    print('need', tmpStep)
+                    
+            nowTime += tmpStep
+            times.append(nowTime)
+            self.tranValueBE = np.append(self.tranValueBE, [tnplus1.T], 0)
+        # print(self.tranValueBE)
         # print('node map\n', self.nodeDict)
         # print('appendLine\n', self.appendLine)
-        return self.tranValueBE, self.appendLine
-    '''
+        return self.tranValueBE, self.appendLine, times
+
     #  solve TRAN with BE
     def stampingBE(self, step, stop):
+        nowTime = 0
+        times = [nowTime]
+
+        print(self.stampMatrix, self.RHS, self.appendLine)
         for device in self.devices:
             if not (device.type == 'D' or device.type == 'M'):
                 self.stampMatrix, self.RHS, self.appendLine = device.loadBE(self.stampMatrix, self.RHS, self.appendLine, step)
@@ -178,7 +246,6 @@ class Solve:
         self.tranValueBE = np.zeros((1, self.stampMatrix.shape[1]))
         self.stampMatrix = np.zeros((self.length, self.length))
         self.RHS = np.zeros((self.length, 1))
-
         for i in range(stop):
             error = 100
             # x_ = np.zeros((len(self.stampMatrix), 1))
@@ -194,7 +261,6 @@ class Solve:
                     print('wrong')
                     break
 
-                # print(x_)
                 # add the nonlinear device
                 stampMatrixWithNonlinear = copy.deepcopy(self.stampMatrix)
                 tmpRHS = copy.deepcopy(self.RHS)
@@ -212,12 +278,14 @@ class Solve:
                 # print('error',i , error)
                 x_ = x
             self.tranValueBE = np.append(self.tranValueBE, [x_.T], 0)
-
-        print(self.tranValueBE)
+            nowTime += step
+            times.append(nowTime)
+        # print(self.tranValueBE)
         # print('node map\n', self.nodeDict)
         # print('appendLine\n', self.appendLine)
-        return self.tranValueBE, self.appendLine
+        return self.tranValueBE, self.appendLine, times
 
+    #  solve TRAN with FE
     def stampingFE(self, step, stop):
         for device in self.devices:
             if not (device.type == 'D' or device.type == 'M'):
@@ -266,6 +334,7 @@ class Solve:
         # print('appendLine\n', self.appendLine)
         return self.tranValueFE, self.appendLine
 
+    #  solve TRAN with TR
     def stampingTR(self, step, stop):
         for device in self.devices:
             if not (device.type == 'D' or device.type == 'M'):
@@ -313,49 +382,3 @@ class Solve:
         # print('node map\n', self.nodeDict)
         # print('appendLine\n', self.appendLine)
         return self.tranValueTR, self.appendLine
-
-    # solve TRAN with FE
-    # def stampingFE(self, step, stop):
-    #     # generate the unchangeable MNA matrix
-    #     for device in self.devices:
-    #         self.stampMatrix, self.RHS, self.appendLine = device.loadFEMatrix(self.stampMatrix, self.RHS, self.appendLine, step)
-    #     # print('stamp matrix', self.stampMatrix)
-    #     self.tranValueFE = np.zeros((1, self.stampMatrix.shape[1]))
-
-    #     for i in range(stop):
-    #         RHSAppendLine = {}
-    #         tmpRHS = copy.deepcopy(self.RHS)
-    #         for device in self.devices:
-    #             tmpRHS, RHSAppendLine = device.loadFERHS(self.stampMatrix, tmpRHS, RHSAppendLine, step, self.tranValueFE[-1])
-
-    #         # print(self.stampMatrix)
-    #         x = np.linalg.solve(self.stampMatrix[1:, 1:], tmpRHS[1:])
-    #         x = np.insert(x, 0, np.array([0]))
-    #         self.tranValueFE = np.append(self.tranValueFE, [x.T], 0)
-
-    #     # print(self.tranValueFE)
-    #     # print('node map\n', self.nodeDict)
-    #     # print('appendLine\n', self.appendLine)
-    #     return self.tranValueFE, self.appendLine
-    
-    # # solve TRAN with TR
-    # def stampingTR(self, step, stop):
-    #     # generate the unchangeable MNA matrix
-    #     for device in self.devices:
-    #         self.stampMatrix, self.RHS, self.appendLine = device.loadTRMatrix(self.stampMatrix, self.RHS, self.appendLine, step)
-    #     # print('stamp matrix', self.stampMatrix)
-    #     self.tranValueTR = np.zeros((1, self.stampMatrix.shape[1]))
-
-    #     for i in range(stop):
-    #         RHSAppendLine = {}
-    #         tmpRHS = copy.deepcopy(self.RHS)
-    #         for device in self.devices:
-    #             tmpRHS, RHSAppendLine = device.loadTRRHS(self.stampMatrix, tmpRHS, RHSAppendLine, step, self.tranValueTR[-1])
-
-    #         # print(self.stampMatrix)
-    #         x = np.linalg.solve(self.stampMatrix[1:, 1:], tmpRHS[1:])
-    #         x = np.insert(x, 0, np.array([0]))
-    #         self.tranValueTR = np.append(self.tranValueTR, [x.T], 0)
-    #     # print('node map\n', self.nodeDict)
-    #     # print('appendLine\n', self.appendLine)
-    #     return self.tranValueTR, self.appendLine

@@ -2,11 +2,12 @@ import re
 import math
 import numpy as np
 exampleNetlist = """*netlist example 1
-V1 1 0 10
-R2 1 2 5
-L3 1 2 4
-C4 2 0 3
-.plot tran V(2,0)
+V2 1 0 -0.7
+V1 2 0 0.4
+M1 2 1 0 0 PMOS
+
+.plot DC I(V1)
+.DC V1 0 -1 -0.01 V2 0 -1 -0.1
 .end
 """
 expoDic = {

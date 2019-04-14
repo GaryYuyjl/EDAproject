@@ -140,6 +140,7 @@ class GUI(QMainWindow):
 
     def solveDC(self):
         self.mySpice.solve()
+        self.mySpice.plotDCWithMatplotlib(0, -1, -0.01)
 
     def solveTRAN(self):
         self.mySpice.solveTran(method='BE')

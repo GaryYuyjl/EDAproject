@@ -108,7 +108,7 @@ class Spice:
                         break
                 self.devices.append(CCVS(device['name'], device['connectionPoints'], device['value'], controlDevice['connectionPoints'], device['control'], device['value'], device['deviceType']))
         # print(self.devices, '\n', self.nodeDict)
-        print(self.deviceList)
+        # print(self.deviceList)
 
     # this function map the node to consecutive number
     def changeConnectionPoints(self):
@@ -144,11 +144,12 @@ class Spice:
             # print('Solve DC Error!')
             
     def showIteration(self):
+        plt.figure(figsize=(10, 6))
         x = np.arange(len(self.iteration) - 1)
-        plt.plot(x, self.iteration[..., 2][1:], label='interation')
+        plt.plot(x, self.iteration[..., 2][1:] - self.iteration[..., 2][1:][-1], label='interation')
         plt.legend(loc='best')
-        plt.title("demo") 
-        plt.xlabel("t") 
+        plt.title("NR iteration") 
+        plt.xlabel("iteration") 
         plt.ylabel("V") 
         plt.show()
 
@@ -170,8 +171,8 @@ class Spice:
             self.DCValue.append(DCValue)
 
     def plotDCWithMatplotlib(self, start, stop, incr, abscissa = None, mannual=[]):
-        print(self.appendLine)
-        print(self.nodeDict)
+        # print(self.appendLine)
+        # print(self.nodeDict)
         if not abscissa == None:
             abscissa = self.nodeDict[abscissa]
         for command in self.commandList:
@@ -208,14 +209,11 @@ class Spice:
                 y1 = DCValue[..., node1] - DCValue[..., node2]
 
                 # for val in arr:
-                print(DCValue, self.nodeDict)
-                # vinverter
+                # print(DCValue, self.nodeDict)
                 if not abscissaNode == None:
-                    # x1 = DCValue[..., 2]
                     x1 = DCValue[..., abscissaNode][1:]
                 else:
                     x1 = np.arange(start, stop, incr)
-                # y1 = DCValue[..., 3]
                 plt.plot(x1, y1[1:], label="DC")
 
                 plt.legend(loc='best')
@@ -226,15 +224,9 @@ class Spice:
                 node1 = params['nodes']
                 y1 = DCValue[..., node1]
                 if not abscissaNode == None:
-                    # x1 = DCValue[..., 2]
                     x1 = DCValue[..., abscissaNode][1:]
                 else:
                     x1 = np.arange(start, stop, incr)
-
-                # nmos
-                # x1 = self.DCValue[..., 1] - self.DCValue[..., 0]
-                # pmos
-                # x1 = self.DCValue[..., 2] - self.DCValue[..., 0]
 
                 plt.plot(x1,y1[1:], label="DC")
                 plt.legend(loc='best')
@@ -250,33 +242,20 @@ class Spice:
                     y1 = DCValue[..., node1] - DCValue[..., node2]
 
                     # for val in arr:
-                    print(DCValue, self.nodeDict)
                     # vinverter
                     if not abscissaNode == None:
-                        # x1 = DCValue[..., 2]
                         x1 = DCValue[..., abscissaNode][1:]
                     else:
                         x1 = np.arange(start, stop, incr)
-                    # y1 = DCValue[..., 3]
                     plt.plot(x1, y1[1:], label=("DC" + str(k)))
-
-                    # plt.legend(loc='best')
-                    # plt.title("demo") 
-                    # plt.xlabel("t") 
-                    # plt.ylabel("V") 
                     plt.show()
                 elif params['mode'] == 'I':
                     node1 = params['nodes']
                     y1 = DCValue[..., node1]
                     if not abscissaNode == None:
-                        # x1 = DCValue[..., 2]
                         x1 = DCValue[..., abscissaNode][1:]
                     else:
                         x1 = np.arange(start, stop, incr)
-                    # nmos
-                    # x1 = DCValue[..., 1] - DCValue[..., 0]
-                    # pmos
-                    # x1 = DCValue[..., 2] - DCValue[..., 0]
                     plt.plot(x1,y1[1:], label=("DC" + str(k)))
                     plt.legend(loc='best')
                     plt.title("demo") 
@@ -286,11 +265,14 @@ class Spice:
 
 
     # solve the function in transient, has three methods
-    def solveTran(self, method = 'BE', step = 0.1, stop = 1500):
+    def solveTran(self, method = 'BE', step = 0.1, stop = 1500, timeStepControl = False):
         # try:
             solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
             if method == 'BE':
-                self.tranValueBE, self.appendLine = solve.stampingBE(step, stop)
+                if timeStepControl:
+                    self.tranValueBE, self.appendLine, self.times = solve.stampingBEWithStepControl(step, stop)
+                else:
+                    self.tranValueBE, self.appendLine, self.times = solve.stampingBE(step, stop)
             elif method == 'FE':
                 self.tranValueFE, self.appendLine = solve.stampingFE(step, stop)
             elif method == 'TR':
@@ -301,7 +283,6 @@ class Spice:
     # the main function of plotting transient value, will call plotTran()
     def plotTranWithMatplotlib(self, step = 0.1, stop = 1500, mannual=[]):
         for command in self.commandList:
-            # print(command)
             if command['type'] == 'PRINT' or command['type'] == 'PLOT':
                 if command['prtype'] == 'TRAN':
                     for ov in command['ovs']:
@@ -323,23 +304,25 @@ class Spice:
         # print(self.tranValueBE, self.tranValueFE, self.tranValueTR)
         if params=={}:
             return
-        plt.figure(figsize=(10, 9))
-        x = np.arange(0, stop * step, step)
+        plt.figure(figsize=(10, 6))
+        # x = np.arange(0, stop * step, step)
+        x = np.array(self.times)[1:]
         if params['mode'] == 'V':
             node1 = params['nodes'][0]
             node2 = params['nodes'][1]
             # print(node1, node2, self.tranValueFE)
             if len(self.tranValueFE):
                 y1 = self.tranValueFE[..., node1] - self.tranValueFE[..., node2]
-                plt.plot(x,y1[1:], label="FE")
+                plt.scatter(x,y1[1:], s=1, label="FE")
             if len(self.tranValueBE):
                 y2 = self.tranValueBE[..., node1] - self.tranValueBE[..., node2]
-                plt.plot(x,y2[1:], label="BE")
+                print(x.size, y2.size)
+                plt.scatter(x,y2[1:], s=1, label="BE")
             if len(self.tranValueTR):
                 y3 = self.tranValueTR[..., node1] - self.tranValueTR[..., node2] 
-                plt.plot(x,y3[1:], label="TR")
+                plt.scatter(x,y3[1:], s=1, label="TR")
             if len(mannual):
-                plt.plot(x,mannual, label="mannual")
+                plt.scatter(x,mannual, label="mannual")
             plt.legend(loc='best')
             plt.title("demo") 
             plt.xlabel("t") 
@@ -349,50 +332,54 @@ class Spice:
             node1 = params['nodes']
             if len(self.tranValueFE):
                 y1 = self.tranValueFE[..., node1]
-                plt.plot(x,y1[1:], label="FE")
+                plt.scatter(x,y1[1:], s=1, label="FE")
             if len(self.tranValueBE):
                 y2 = self.tranValueBE[..., node1]
-                plt.plot(x,y2[1:], label="BE")
+                plt.scatter(x,y2[1:], s=1, label="BE")
             if len(self.tranValueTR):
                 y3 = self.tranValueTR[..., node1]
-                plt.plot(x,y3[1:], label="TR")
+                plt.scatter(x,y3[1:], s=1, label="TR")
             if len(mannual):
-                plt.plot(x,mannual, label="mannual")
+                plt.scatter(x,mannual, label="mannual")
             plt.legend(loc='best')
             plt.title("demo") 
             plt.xlabel("t") 
             plt.ylabel("I") 
             plt.show()
 
+    def printMNAwithDiode(self, netlist):
+        solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
+        self.iteration = solve.stamping(printMNA = True)
+
     def showNewtonRaphson(self):
         plt.figure(figsize=(10, 6))
         step = 0.00001
-        x = np.arange(0.011, 0.03, step)
+        x = np.arange(0, 0.02, step)
         y = 2 / 3 * x - 5 / 3 + np.exp(40 * x)
 
         for k, ite in enumerate(self.iteration):
             # x1 = ite[2]
-            if k == 0:
-                continue
+            # if k == 0:
+            #     continue
             x1 = ite[2]
             y1 = 2 / 3 * x1 - 5 / 3 + np.exp(40 * x1)
             # y1 = (2 / 3 + 40 * np.exp(40 * x1)) * (x - x1) + (2 / 3 * x1 - 5 / 3 + np.exp(40 * x1))
             # plt.plot(x, y1, label="mannual")
 
-            print(x1, y1)
+            # print(x1, y1)
             line = [(x1, 0), (x1, y1)]
             (xpoints, ypoints) = zip(*line)
             plt.plot(xpoints, ypoints, color='black')
-            if k > 1:
+            if k >= 1:
                 lastx1 = self.iteration[k - 1][2]
-                lasty1 = 2 / 3 * lastx1 - 5 / 3 + np.exp(40 * x1)
-                line = [(lastx1, lasty1), (x1, y1)]
+                lasty1 = 2 / 3 * lastx1 - 5 / 3 + np.exp(40 * lastx1)
+                line = [(lastx1, lasty1), (x1, 0)]
                 (xpoints, ypoints) = zip(*line)
                 plt.plot(xpoints, ypoints, color='black')
 
         zero = np.zeros((len(x)))
         # print(y)
-        print('iteration', self.iteration)
+        # print('iteration', self.iteration)
         plt.plot(x, zero, label="mannual")
         plt.plot(x, y, label="mannual")
         plt.title("Newton Raphson") 
