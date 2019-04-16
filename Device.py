@@ -1,7 +1,6 @@
 from Util import *
 import numpy as np
 # father class of all devices
-alpha = 40
 class SuperDevice:
     def __init__(self, name, connectionPoints, _type):
         self.connectionPoints = connectionPoints
@@ -19,13 +18,13 @@ class SuperDevice:
             return lastValue[index]
         else:
             return 0
-
+    # load op
     def load(self):
         pass
-    
+    def loadAC(self):
+        pass
     def loadDC(self):
         pass
-    
     def loadBE(self):
         pass
     def loadTR(self):
@@ -37,7 +36,7 @@ class Diode(SuperDevice):
     def __init__(self, name, connectionPoints, _type):
         super().__init__(name, connectionPoints, _type)
         self.alpha = 40
-    
+
     def load(self, stampMatrix, RHS, appendLine, lastValue=[]):
         if not len(lastValue):
             return stampMatrix, RHS, appendLine
@@ -51,8 +50,8 @@ class Diode(SuperDevice):
         RHS[self.NPlus][0] += -(np.exp(self.alpha * v_tMinush) - 1) + self.alpha * np.exp(self.alpha * v_tMinush) * v_tMinush
         RHS[self.NMinus][0] -= -(np.exp(self.alpha * v_tMinush) - 1) + self.alpha * np.exp(self.alpha * v_tMinush) * v_tMinush
         return stampMatrix, RHS, appendLine
-    
-    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+
+    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
 
         stampMatrix[self.NPlus][self.NPlus] += self.alpha * np.exp(self.alpha * v_tMinush)
@@ -64,34 +63,18 @@ class Diode(SuperDevice):
 
         return stampMatrix, RHS, appendLine
 
-    def loadBEMatrix(self, stampMatrix, RHS, appendLine, step, lastValue):
-        v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, appointValue)
 
-        stampMatrix[self.NPlus][self.NPlus] += self.alpha * np.exp(self.alpha * v_tMinush)
-        stampMatrix[self.NMinus][self.NPlus] -= self.alpha * np.exp(self.alpha * v_tMinush)
-        stampMatrix[self.NPlus][self.NMinus] -= self.alpha * np.exp(self.alpha * v_tMinush)
-        stampMatrix[self.NMinus][self.NMinus] += self.alpha * np.exp(self.alpha * v_tMinush)
-        return stampMatrix, RHS, appendLine
-
-    def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
-        
-        RHS[self.NPlus][0] -= np.exp(self.alpha * v_tMinush) - 1 - self.alpha * v_tMinush * np.exp(self.alpha * v_tMinush)
-        RHS[self.NMinus][0] += np.exp(self.alpha * v_tMinush) - 1 - self.alpha * v_tMinush * np.exp(self.alpha * v_tMinush)
-        return RHS, appendLine
-
-    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
-        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, dcValue)
-        
-    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
-        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, dcValue)
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, appointValue)
 
     def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.load(stampMatrix, RHS, appendLine)
 
     def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return RHS, appendLine
-    
+
     def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.load(stampMatrix, RHS, appendLine)
 
@@ -107,27 +90,103 @@ class Mosfet(SuperDevice):
         self.S = connectionPoints[2]
         self.B = connectionPoints[3]
         if mname[0] == 'N':
+            self.Is = 2e-6
             self.k = 115e-6
             self.W = 2e-6
             self.L = 1e-6
-            self.vt = 0.43
+            self.vt = 0
             self.lamda = 0.06
         elif mname[0] == 'P':
+            self.Is = -2e-6
             self.k = -30e-6
             self.W = 4e-6
             self.L = 1e-6
-            self.vt = -0.4
+            self.vt = 0
             self.lamda = -0.1
         if not W == None:
             self.W = stringToNum(W)
         if not L == None:
             self.L = stringToNum(L)
-        
 
     def load(self, stampMatrix, RHS, appendLine, lastValue=[]):
         return stampMatrix, RHS, appendLine
 
-    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, dcValue = None):
+    # try to exchange the drain and source
+    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, appointValue = None):
+        if len(lastValue) == 0:
+            return stampMatrix, RHS, appendLine
+        vgs = lastValue[self.G] - lastValue[self.S]
+        vds = lastValue[self.D] - lastValue[self.S]
+        if self.mname[0] == 'N':
+            if vds <= 0:
+                self.D, self.S = self.S, self.D
+                vgs = lastValue[self.G] - lastValue[self.S]
+                vds = lastValue[self.D] - lastValue[self.S]
+            if vgs <= 1 * self.vt:
+                # print(1, self.name, vds, vgs, self.vt, lastValue)
+                gm = self.Is * np.exp((vgs - self.vt) / (1.5 * 26e-3)) / (1.5 * 26e-3)
+                gds = 0
+                # ids = 0
+                # ids = self.Is * np.exp(vgs / 26e-3 / 1.5) * (1 - np.exp(-vds / 26e-3)) * (1 + self.lamda * vds)
+                ids = self.Is * np.exp((vgs - self.vt) / (1.5 * 26e-3))
+            elif vds <= vgs - self.vt:
+                # print(2, self.name, vds, vgs, self.vt, lastValue)
+                # if vds <= 0:
+                #     gm = self.k * self.W / self.L * 2 * vds
+                #     gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
+                #     ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2)
+                # else:
+                gm = self.k * self.W / self.L * 2 * vds * (1 + self.lamda * vds)
+                gds = self.k * self.W / self.L * (2 * (vgs - self.vt) + (4 * self.lamda * (vgs - self.vt) - 2) * vds - 3 * self.lamda * vds ** 2)
+                ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2) * (1 + self.lamda * vds)
+            elif vds > vgs - self.vt:
+                # print(3, self.name, vds, vgs, self.vt, lastValue)
+                gm = self.k * self.W / self.L * 2 * (vgs - self.vt) * (1 + self.lamda * vds)
+                gds = self.k * self.W / self.L * (vgs - self.vt) ** 2 * self.lamda
+                ids = self.k * self.W / self.L * (vgs - self.vt) ** 2 * (1 + self.lamda * vds)
+
+        elif self.mname[0] == 'P':
+            if vds >= 0:
+                self.D, self.S = self.S, self.D
+                vgs = lastValue[self.G] - lastValue[self.S]
+                vds = lastValue[self.D] - lastValue[self.S]
+            if vgs >= 1 * self.vt:
+                # print(4, self.name, vds, vgs, self.vt, lastValue)
+                # ids = 0
+                gm = -self.Is * np.exp((-vgs + self.vt) / (1.5 * 26e-3)) / (1.5 * 26e-3)
+                gds = 0
+                ids = self.Is * np.exp((-vgs + self.vt) / (1.5 * 26e-3))
+                # print(gm, gds, ids)
+            elif vds >= vgs - self.vt:
+                # print(5, self.name, vds, vgs, self.vt, lastValue)
+                # if vds >= 0:
+                #     gm = self.k * self.W / self.L * 2 * vds
+                #     gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
+                #     ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2)
+                # else:
+                gm = self.k * self.W / self.L * 2 * vds * (1 + self.lamda * vds)
+                ### 重新算一下
+                gds = self.k * self.W / self.L * (2 * (vgs - self.vt) + (-4 * self.lamda * (vgs - self.vt) - 2) * vds + 3 * self.lamda * vds ** 2)
+                ids = self.Is + self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2) * (1 + self.lamda * vds)
+            elif vds < vgs - self.vt:
+                # print(6, self.name, vds, vgs, self.vt, lastValue)
+                gm = self.k * self.W / self.L * 2 * (-vgs + self.vt) * (1 + self.lamda * vds)
+                gds = self.k * self.W / self.L * (vgs - self.vt) ** 2 * self.lamda
+                ids = self.Is + self.k * self.W / self.L * (-vgs + self.vt) ** 2 * (1 + self.lamda * vds)
+        stampMatrix[self.D][self.D] += gds
+        stampMatrix[self.S][self.D] -= gds
+        stampMatrix[self.D][self.S] -= gds + gm
+        stampMatrix[self.S][self.S] += gds + gm
+        stampMatrix[self.D][self.G] += gm
+        stampMatrix[self.S][self.G] -= gm
+        # print('vds', vds, gds, gm)
+        jds = ids - gm * vgs - gds * vds
+        RHS[self.D][0] -= jds
+        RHS[self.S][0] += jds
+        self.D, self.S = self.S, self.D
+        return stampMatrix, RHS, appendLine
+
+    def loadDC1(self, stampMatrix, RHS, appendLine, lastValue=None, appointValue = None):
         if len(lastValue) == 0:
             return stampMatrix, RHS, appendLine
         vgs = lastValue[self.G] - lastValue[self.S]
@@ -150,12 +209,9 @@ class Mosfet(SuperDevice):
             elif vds <= vgs - self.vt:
                 # print(2, self.name, vds, vgs, self.vt, lastValue)
                 if vds <= 0:
-                    # gm = self.k * self.W / self.L * 2 * vds
-                    # gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
-                    # ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2)
-                    gm = 0
-                    gds = 0
-                    ids = 0
+                    gm = self.k * self.W / self.L * 2 * vds
+                    gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
+                    ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2)
                 else:
                     gm = self.k * self.W / self.L * 2 * vds * (1 + self.lamda * vds)
                     gds = self.k * self.W / self.L * (2 * (vgs - self.vt) + (4 * self.lamda * (vgs - self.vt) - 2) * vds - 3 * self.lamda * vds ** 2)
@@ -179,12 +235,9 @@ class Mosfet(SuperDevice):
             elif vds >= vgs - self.vt:
                 # print(5, self.name, vds, vgs, self.vt, lastValue)
                 if vds >= 0:
-                    gm = 0
-                    gds = 0
-                    ids = 0
-                    # gm = self.k * self.W / self.L * 2 * vds
-                    # gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
-                    # ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2)
+                    gm = self.k * self.W / self.L * 2 * vds
+                    gds = self.k * self.W / self.L * (2 * (vgs - self.vt) - 2 * vds)
+                    ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2)
                 else:
                     gm = self.k * self.W / self.L * 2 * vds * (1 + self.lamda * vds)
                     ### 重新算一下
@@ -211,71 +264,24 @@ class Mosfet(SuperDevice):
         RHS[self.S][0] += jds
         return stampMatrix, RHS, appendLine
 
-    def loadDCMatrix(self, stampMatrix, RHS, appendLine, lastValue):
-        return self.loadBEMatrix(stampMatrix, RHS, appendLine, 0, lastValue)
+    def loadBE(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], appointValue = None):
+        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
 
-    def loadDCRHS(self, stampMatrix, RHS, appendLine, lastValue):
-        return self.loadBERHS(stampMatrix, RHS, appendLine, 0, lastValue)
+    def loadFE(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], appointValue = None):
+        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
 
-    def loadBE(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], dcValue = None):
-        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, dcValue)
-
-    def loadFE(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], dcValue = None):
-        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, dcValue)
-
-    def loadTR(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], dcValue = None):
-        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, dcValue)
-
-    def loadBEMatrix(self, stampMatrix, RHS, appendLine, step, lastValue):
-        vgs = lastValue[self.G] - lastValue[self.S]
-        vds = lastValue[self.D] - lastValue[self.S]
-        gds = self.k * self.W / self.L * (vgs - self.vt) ** 2 * self.lamda
-        gm = self.k * self.W / self.L * 2 * vds
-
-        stampMatrix[self.D][self.D] += gds
-        stampMatrix[self.S][self.D] -= gds
-        stampMatrix[self.D][self.S] -= gds + gm
-        stampMatrix[self.S][self.S] += gds + gm
-        stampMatrix[self.D][self.G] += gm
-        stampMatrix[self.S][self.G] -= gm
-        return stampMatrix, RHS, appendLine
-
-    def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        vgs = lastValue[self.G] - lastValue[self.S]
-        vds = lastValue[self.D] - lastValue[self.S]
-        gds = self.k * self.W / self.L * (vgs - self.vt) ** 2 * self.lamda
-        gm = self.k * self.W / self.L * 2 * vds
-
-        if vds < vgs - self.vt:
-            ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2) * (1 + self.lamda * vds)
-        elif vds > vgs - self.vt:
-            ids = self.k * self.W / self.L * (vgs - self.vt) ** 2 * (1 + self.lamda * vds)
-        jds = ids - gm * vgs - gds * vds
-        RHS[self.D][0] -= jds
-        RHS[self.S][0] += jds
-        return RHS, appendLine
-    
-    def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
-        return self.load(stampMatrix, RHS, appendLine)
-
-    def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        return RHS, appendLine
-    
-    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
-        return self.load(stampMatrix, RHS, appendLine)
-
-    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        return RHS, appendLine
+    def loadTR(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], appointValue = None):
+        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
 
 class Resistor(SuperDevice):
     def __init__(self, name, connectionPoints, value, _type):
         super().__init__(name, connectionPoints, _type)
         self.value = value
-    
+
     # load function will add this device to MNA matrix
     '''DC
         +    -     |  RHS
-                   |   
+                   |
     +  1/R  -1/R   |   0
                    |
     - -1/R  1/R    |   0
@@ -288,61 +294,47 @@ class Resistor(SuperDevice):
         stampMatrix[self.NMinus][self.NMinus] += 1 / self.value
         return stampMatrix, RHS, appendLine
 
-    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, dcValue = None):
-        if dcValue == None:
-            dcValue = self.value
+    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, appointValue = None):
+        if appointValue == None:
+            appointValue = self.value
         stampMatrix[self.NPlus][self.NPlus] += 1 / self.value
         stampMatrix[self.NPlus][self.NMinus] -= 1 / self.value
         stampMatrix[self.NMinus][self.NPlus] -= 1 / self.value
         stampMatrix[self.NMinus][self.NMinus] += 1 / self.value
         return stampMatrix, RHS, appendLine
-    
-    # def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
-    #     if dcValue == None:
-    #         dcValue = self.value
+
+    # def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+    #     if appointValue == None:
+    #         appointValue = self.value
     #     stampMatrix[self.NPlus][self.NPlus] += 1 / self.value
     #     stampMatrix[self.NPlus][self.NMinus] -= 1 / self.value
     #     stampMatrix[self.NMinus][self.NPlus] -= 1 / self.value
     #     stampMatrix[self.NMinus][self.NMinus] += 1 / self.value
     #     return stampMatrix, RHS, appendLine
-    
-    def loadBE(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], dcValue = None):
-        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, dcValue)
-    def loadBETimeStepControl(self, stampMatrix, RHS, appendLine, h, fakeTimes, fakeTranValue, t = 0, lastValue=[], dcValue = None):
+
+    def loadAC(self, stampMatrix, RHS, appendLine,  freq, t = 0, lastValue=[], appointValue = None):
+        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
+
+    def loadBE(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], appointValue = None):
+        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
+
+    def loadBETimeStepControl(self, stampMatrix, RHS, appendLine, h, fakeTimes, fakeTranValue, t = 0, lastValue=[], appointValue = None):
         target = t - h
         targetIndex = np.argmin(abs(np.array(fakeTimes) - target))
         lastValue = fakeTranValue[targetIndex]
-        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, dcValue)
+        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
 
-    def loadFE(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], dcValue = None):
-        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, dcValue)
+    def loadFE(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], appointValue = None):
+        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
 
-    def loadTR(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], dcValue = None):
-        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, dcValue)
-    
-    def loadBEMatrix(self, stampMatrix, RHS, appendLine, step):
-        return self.load(stampMatrix, RHS, appendLine)
+    def loadTR(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], appointValue = None):
+        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
 
-    def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        return RHS, appendLine
-    
-    def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
-        return self.load(stampMatrix, RHS, appendLine)
-
-    def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        return RHS, appendLine
-    
-    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
-        return self.load(stampMatrix, RHS, appendLine)
-
-    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        return RHS, appendLine
-    
 class Capacitor(SuperDevice):
     def __init__(self, name, connectionPoints, value, _type):
         super().__init__(name, connectionPoints, _type)
         self.value = value
-    
+
     def load(self, stampMatrix, RHS, appendLine, lastValue=[]):
         stampMatrix[self.NPlus][self.NPlus] += self.value * 0
         stampMatrix[self.NPlus][self.NMinus] -= self.value * 0
@@ -354,9 +346,9 @@ class Capacitor(SuperDevice):
         # stampMatrix[self.NMinus][self.NMinus] += self.value * 1j
         return stampMatrix, RHS, appendLine
 
-    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, dcValue = None):
-        if dcValue == None:
-            dcValue = self.value
+    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, appointValue = None):
+        if appointValue == None:
+            appointValue = self.value
         stampMatrix[self.NPlus][self.NPlus] += self.value * 0
         stampMatrix[self.NPlus][self.NMinus] -= self.value * 0
         stampMatrix[self.NMinus][self.NPlus] -= self.value * 0
@@ -367,9 +359,16 @@ class Capacitor(SuperDevice):
         # stampMatrix[self.NMinus][self.NMinus] += self.value * 1j
         return stampMatrix, RHS, appendLine
 
+    def loadAC(self, stampMatrix, RHS, appendLine,  freq, t = 0, lastValue=[], appointValue = None):
+        stampMatrix[self.NPlus][self.NPlus] += self.value * 1j * freq
+        stampMatrix[self.NPlus][self.NMinus] -= self.value * 1j * freq
+        stampMatrix[self.NMinus][self.NPlus] -= self.value * 1j * freq
+        stampMatrix[self.NMinus][self.NMinus] += self.value * 1j * freq
+        return stampMatrix, RHS, appendLine
+
     '''TRAN BE
         +    -    i   |  RHS
-                      |   
+                      |
     +   0    0    1   |   0
                       |
     -   0    0    -1  |   0
@@ -378,9 +377,9 @@ class Capacitor(SuperDevice):
                       |
     '''
 
-    def loadBE(self, stampMatrix, RHS, appendLine, h, t = 0, lastValue=[], dcValue = None):
-        if dcValue == None:
-            dcValue = self.value
+    def loadBE(self, stampMatrix, RHS, appendLine, h, t = 0, lastValue=[], appointValue = None):
+        if appointValue == None:
+            appointValue = self.value
         index = stampMatrix.shape[0]
         stampMatrix = expandMatrix(stampMatrix, 1)
 
@@ -397,12 +396,12 @@ class Capacitor(SuperDevice):
 
         return stampMatrix, RHS, appendLine
 
-    def loadBETimeStepControl(self, stampMatrix, RHS, appendLine, h, fakeTimes, fakeTranValue, t = 0, lastValue=[], dcValue = None):
+    def loadBETimeStepControl(self, stampMatrix, RHS, appendLine, h, fakeTimes, fakeTranValue, t = 0, lastValue=[], appointValue = None):
         target = t - h
         targetIndex = np.argmin(abs(np.array(fakeTimes) - target))
         lastValue = fakeTranValue[targetIndex]
-        if dcValue == None:
-            dcValue = self.value
+        if appointValue == None:
+            appointValue = self.value
         index = stampMatrix.shape[0]
         stampMatrix = expandMatrix(stampMatrix, 1)
 
@@ -419,9 +418,19 @@ class Capacitor(SuperDevice):
 
         return stampMatrix, RHS, appendLine
 
-    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
-        if dcValue == None:
-            dcValue = self.value
+    '''TRAN FE
+        +    -    i   |  RHS
+                      |
+    +   0    0    1   |   0
+                      |
+    -   0    0    -1  |   0
+                      |
+    br C/h -C/h   0   |  i(t-h)+C/h*v(t-h)
+                      |
+    '''
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        if appointValue == None:
+            appointValue = self.value
         index = stampMatrix.shape[0]
         stampMatrix = expandMatrix(stampMatrix, 1)
 
@@ -438,9 +447,19 @@ class Capacitor(SuperDevice):
 
         return stampMatrix, RHS, appendLine
 
-    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
-        if dcValue == None:
-            dcValue = self.value
+    '''TRAN TR
+        +    -    i   |  RHS
+                      |
+    +   0    0    1   |   0
+                      |
+    -   0    0    -1  |   0
+                      |
+    br 2C/h -2C/h -1  |  i(t-h)+2C/h*v(t-h)
+                      |
+    '''
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        if appointValue == None:
+            appointValue = self.value
         index = stampMatrix.shape[0]
         stampMatrix = expandMatrix(stampMatrix, 1)
 
@@ -457,101 +476,11 @@ class Capacitor(SuperDevice):
         appendLine[self.name] = index
         return stampMatrix, RHS, appendLine
 
-    def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
-        # print('capacitor', self.value, h, stampMatrix)
-        index = stampMatrix.shape[0]
-        stampMatrix = expandMatrix(stampMatrix, 1)
-
-        stampMatrix[self.NPlus][index] += 1
-        stampMatrix[self.NMinus][index] -= 1
-        stampMatrix[index][self.NPlus] += self.value / h
-        stampMatrix[index][self.NMinus] -= self.value / h
-        stampMatrix[index][index] -= 1
-
-        appendLine[self.name] = index
-        return stampMatrix, RHS, appendLine
-
-    def loadBERHS(self, stampMatrix, RHS, appendLine, h, lastValue):
-        index = len(RHS)
-        v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
-        add = np.array([self.value / h * v_tMinush])
-        RHS = np.vstack((RHS, add)) # add vc
-        appendLine[self.name] = index
-
-        return RHS, appendLine
-
-    '''TRAN FE
-        +    -    i   |  RHS
-                      |   
-    +   0    0    1   |   0
-                      |
-    -   0    0    -1  |   0
-                      |
-    br C/h -C/h   0   |  i(t-h)+C/h*v(t-h)
-                      |
-    '''
-    def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
-        index = stampMatrix.shape[0]
-        stampMatrix = expandMatrix(stampMatrix, 1)
-
-        stampMatrix[self.NPlus][index] += 1
-        stampMatrix[self.NMinus][index] -= 1
-        stampMatrix[index][self.NPlus] += self.value / step
-        stampMatrix[index][self.NMinus] -= self.value / step
-
-        appendLine[self.name] = index
-        return stampMatrix, RHS, appendLine
-
-    def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        index = len(RHS)
-        v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
-        i_tMinush = lastValue[index]
-        appendLine[self.name] = index
-
-        add = np.array([self.value / step * v_tMinush + i_tMinush])
-        RHS = np.vstack((RHS, add)) # add vc
-
-        return RHS, appendLine
-    
-    '''TRAN TR
-        +    -    i   |  RHS
-                      |   
-    +   0    0    1   |   0
-                      |
-    -   0    0    -1  |   0
-                      |
-    br 2C/h -2C/h -1  |  i(t-h)+2C/h*v(t-h)
-                      |
-    '''
-    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
-        index = stampMatrix.shape[0]
-        stampMatrix = expandMatrix(stampMatrix, 1)
-
-        stampMatrix[self.NPlus][index] += 1
-        stampMatrix[self.NMinus][index] -= 1
-        stampMatrix[index][self.NPlus] += 2 * self.value / step
-        stampMatrix[index][self.NMinus] -= 2 * self.value / step
-        stampMatrix[index][index] -= 1
-
-        appendLine[self.name] = index
-        return stampMatrix, RHS, appendLine
-
-    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        index = len(RHS)
-        v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
-        i_tMinush = lastValue[index]
-        appendLine[self.name] = index
-
-        add = np.array([i_tMinush + 2 * self.value / step * v_tMinush])
-        RHS = np.vstack((RHS, add)) # add vc
-
-        return RHS, appendLine
-
 class Inductor(SuperDevice):
     def __init__(self, name, connectionPoints, value, _type):
         super().__init__(name, connectionPoints, _type)
         self.value = value
-    
+
     def load(self, stampMatrix, RHS, appendLine, lastValue=[]):
         index = stampMatrix.shape[0]
         stampMatrix = expandMatrix(stampMatrix, 1)
@@ -566,9 +495,24 @@ class Inductor(SuperDevice):
         appendLine[self.name] = index
         return stampMatrix, RHS, appendLine
 
+    def loadAC(self, stampMatrix, RHS, appendLine,  freq, t = 0, lastValue=[], appointValue = None):
+        index = stampMatrix.shape[0]
+        stampMatrix = expandMatrix(stampMatrix, 1)
+
+        stampMatrix[self.NPlus][index] += 1j * freq * self.value
+        stampMatrix[self.NMinus][index] -= 1j * freq * self.value
+        stampMatrix[index][self.NPlus] += 1j * freq * self.value
+        stampMatrix[index][self.NMinus] -= 1j * freq * self.value
+        stampMatrix[index][index] -= self.value * 1j
+        RHS = np.vstack((RHS, np.array([0]))) # add vc
+
+        appendLine[self.name] = index
+        return stampMatrix, RHS, appendLine
+
+
     '''TRAN BE
         +    -    i   |  RHS
-                      |   
+                      |
     +   0    0    1   |   0
                       |
     -   0    0    -1  |   0
@@ -577,9 +521,9 @@ class Inductor(SuperDevice):
                       |
     '''
 
-    def loadBE(self, stampMatrix, RHS, appendLine, h, t = 0, lastValue=[], dcValue = None):
-        if dcValue == None:
-            dcValue = self.value
+    def loadBE(self, stampMatrix, RHS, appendLine, h, t = 0, lastValue=[], appointValue = None):
+        if appointValue == None:
+            appointValue = self.value
         index = stampMatrix.shape[0]
         stampMatrix = expandMatrix(stampMatrix, 1)
 
@@ -590,16 +534,16 @@ class Inductor(SuperDevice):
         stampMatrix[index][index] -= self.value / h
         appendLine[self.name] = index
         if len(lastValue):
-            i_tMinush = lastValue[index] 
+            i_tMinush = lastValue[index]
             RHS = np.vstack((RHS, np.array([-self.value / h * i_tMinush]))) # add vc
         return stampMatrix, RHS, appendLine
 
-    def loadBETimeStepControl(self, stampMatrix, RHS, appendLine, h, fakeTimes, fakeTranValue, t = 0, lastValue=[], dcValue = None):
+    def loadBETimeStepControl(self, stampMatrix, RHS, appendLine, h, fakeTimes, fakeTranValue, t = 0, lastValue=[], appointValue = None):
         target = t - h
         targetIndex = np.argmin(abs(np.array(fakeTimes) - target))
         lastValue = fakeTranValue[targetIndex]
-        if dcValue == None:
-            dcValue = self.value
+        if appointValue == None:
+            appointValue = self.value
         index = stampMatrix.shape[0]
         stampMatrix = expandMatrix(stampMatrix, 1)
 
@@ -610,13 +554,24 @@ class Inductor(SuperDevice):
         stampMatrix[index][index] -= self.value / h
         appendLine[self.name] = index
         if len(lastValue):
-            i_tMinush = lastValue[index] 
+            i_tMinush = lastValue[index]
             RHS = np.vstack((RHS, np.array([-self.value / h * i_tMinush]))) # add vc
         return stampMatrix, RHS, appendLine
 
-    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
-        if dcValue == None:
-            dcValue = self.value
+    '''TRAN FE
+        +    -    i   |  RHS
+                      |
+    +   0    0    1   |   0
+                      |
+    -   0    0    -1  |   0
+                      |
+    br  0    0    1   |  i(t-h)+h/L*v(t-h)
+                      |
+    '''
+
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        if appointValue == None:
+            appointValue = self.value
         index = stampMatrix.shape[0]
         stampMatrix = expandMatrix(stampMatrix, 1)
 
@@ -626,13 +581,23 @@ class Inductor(SuperDevice):
         appendLine[self.name] = index
         if len(lastValue):
             v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
-            i_tMinush = lastValue[index] 
+            i_tMinush = lastValue[index]
             RHS = np.vstack((RHS, np.array([step * v_tMinush / self.value + i_tMinush]))) # add vc
         return stampMatrix, RHS, appendLine
 
-    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
-        if dcValue == None:
-            dcValue = self.value
+    '''TRAN TR
+        +    -    i   |  RHS
+                      |
+    +   0    0    1   |   0
+                      |
+    -   0    0   -1   |   0
+                      |
+    br  -1   1   2L/h |  2L/h*i(t-h)+i(t-h)
+                      |
+    '''
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        if appointValue == None:
+            appointValue = self.value
         index = stampMatrix.shape[0]
         stampMatrix = expandMatrix(stampMatrix, 1)
 
@@ -652,98 +617,14 @@ class Inductor(SuperDevice):
             RHS = np.vstack((RHS, add)) # add vc
         return stampMatrix, RHS, appendLine
 
-    def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
-        index = stampMatrix.shape[0]
-        stampMatrix = expandMatrix(stampMatrix, 1)
-
-        stampMatrix[self.NPlus][index] += 1
-        stampMatrix[self.NMinus][index] -= 1
-        stampMatrix[index][self.NPlus] += 1
-        stampMatrix[index][self.NMinus] -= 1
-        stampMatrix[index][index] -= self.value / h
-        appendLine[self.name] = index
-        return stampMatrix, RHS, appendLine
-
-    def loadBERHS(self, stampMatrix, RHS, appendLine, h, lastValue):
-        index = len(RHS)
-        i_tMinush = lastValue[index] 
-        RHS = np.vstack((RHS, np.array([-self.value / h * i_tMinush]))) # add vc
-        appendLine[self.name] = index
-
-        return RHS, appendLine
-    
-    '''TRAN FE
-        +    -    i   |  RHS
-                      |   
-    +   0    0    1   |   0
-                      |
-    -   0    0    -1  |   0
-                      |
-    br  0    0    1   |  i(t-h)+h/L*v(t-h)
-                      |
-    '''
-    def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
-        index = stampMatrix.shape[0]
-        stampMatrix = expandMatrix(stampMatrix, 1)
-
-        stampMatrix[self.NPlus][index] += 1
-        stampMatrix[self.NMinus][index] -= 1
-        stampMatrix[index][index] += 1
-        appendLine[self.name] = index
-        return stampMatrix, RHS, appendLine
-
-    def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        index = len(RHS)
-        v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
-        i_tMinush = lastValue[index] 
-        RHS = np.vstack((RHS, np.array([step * v_tMinush / self.value + i_tMinush]))) # add vc
-        appendLine[self.name] = index
-
-        return RHS, appendLine
-    
-    '''TRAN TR
-        +    -    i   |  RHS
-                      |   
-    +   0    0    1   |   0
-                      |
-    -   0    0   -1   |   0
-                      |
-    br  -1   1   2L/h |  2L/h*i(t-h)+i(t-h)
-                      |
-    '''
-    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
-        index = stampMatrix.shape[0]
-        stampMatrix = expandMatrix(stampMatrix, 1)
-
-        stampMatrix[self.NPlus][index] += 1
-        stampMatrix[self.NMinus][index] -= 1
-        stampMatrix[index][self.NPlus] -= 1
-        stampMatrix[index][self.NMinus] += 1
-        stampMatrix[index][index] += 2 * self.value / step
-
-        appendLine[self.name] = index
-        return stampMatrix, RHS, appendLine
-
-    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        index = len(RHS)
-        v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
-        i_tMinush = lastValue[index]
-        appendLine[self.name] = index
-
-        add = np.array([i_tMinush * 2 * self.value / step + v_tMinush])
-        RHS = np.vstack((RHS, add)) # add vc
-
-        return RHS, appendLine
-
-
 class ISource(SuperDevice):
     def __init__(self, name, connectionPoints, value, _type):
         super().__init__(name, connectionPoints, _type)
         self.value = value
-    
+
     '''DC
         +    -     |  RHS
-                   |   
+                   |
     +   0    0     |   -i
                    |
     -   0    0     |   i
@@ -754,52 +635,35 @@ class ISource(SuperDevice):
         RHS[self.NMinus][0] += self.value
         return stampMatrix, RHS, appendLine
 
-    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, dcValue = None):
-        # print(dcValue, self.name, self.connectionPoints)
-        if dcValue == None:
-            dcValue = self.value
+    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, appointValue = None):
+        # print(appointValue, self.name, self.connectionPoints)
+        if appointValue == None:
+            appointValue = self.value
+            print('appointValue', appointValue)
         if not appendLine.__contains__(self.name):
-            RHS[self.NPlus][0] -= dcValue
-            RHS[self.NMinus][0] += dcValue
+            RHS[self.NPlus][0] -= appointValue
+            RHS[self.NMinus][0] += appointValue
         return stampMatrix, RHS, appendLine
 
-    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
-        if dcValue == None:
-            dcValue = self.value
+    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        if appointValue == None:
+            appointValue = self.value
         RHS[self.NPlus][0] -= self.value
         RHS[self.NMinus][0] += self.value
         return stampMatrix, RHS, appendLine
-    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
-        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, dcValue)
-    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
-        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, dcValue)
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, appointValue)
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, appointValue)
 
-    def loadBEMatrix(self, stampMatrix, RHS, appendLine, step):
-        return self.load(stampMatrix, RHS, appendLine)
-
-    def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        RHS[self.NPlus][0] -= self.value
-        RHS[self.NMinus][0] += self.value
-        return RHS, appendLine
-
-    def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
-        return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
-    
-    def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
-        
-    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
-        return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
-    
-    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
 
 class VSource(SuperDevice):
-    def __init__(self, name, connectionPoints, value, _type, sin, pulse):
+    def __init__(self, name, connectionPoints, value, _type, sin, pulse, const):
         super().__init__(name, connectionPoints, _type)
         self.value = value
         self.sin = False
         self.pulse = False
+        self.const = False
         if len(sin):
             self.sin = True
             self.sin_v0 = stringToNum(sin[0])
@@ -816,10 +680,12 @@ class VSource(SuperDevice):
             self.pulse_tf = stringToNum(pulse[4])
             self.pulse_pw = stringToNum(pulse[5])
             self.pulse_per = stringToNum(pulse[6])
+        if len(const):
+            self.const_v = stringToNum(const[0])
 
     '''DC
         +    -    i   |  RHS
-                      |   
+                      |
     +   0    0    1   |   0
                       |
     -   0    0   -1   |   0
@@ -827,9 +693,9 @@ class VSource(SuperDevice):
     br  -1   1    0   |   v
                       |
     '''
-    def load(self, stampMatrix, RHS, appendLine, lastValue=[], dcValue = None):
-        if dcValue == None:
-            dcValue = self.value
+    def load(self, stampMatrix, RHS, appendLine, lastValue=[], appointValue = None):
+        if appointValue == None:
+            appointValue = self.value
         if not appendLine.__contains__(self.name):
             index = stampMatrix.shape[0]
             # print(stampMatrix.shape)
@@ -840,16 +706,16 @@ class VSource(SuperDevice):
             stampMatrix[index][self.NPlus] += 1
             stampMatrix[index][self.NMinus] -= 1
 
-            RHS = np.vstack((RHS, np.array([dcValue])))
-            
+            RHS = np.vstack((RHS, np.array([appointValue])))
+
             appendLine[self.name] = index
 
         return stampMatrix, RHS, appendLine
 
-    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, dcValue = None):
-        # print(dcValue, self.name, self.connectionPoints)
-        if dcValue == None:
-            dcValue = self.value
+    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, appointValue = None):
+        # print(appointValue, self.name, self.connectionPoints)
+        if appointValue == None:
+            appointValue = self.value
         if not appendLine.__contains__(self.name):
             index = stampMatrix.shape[0]
             # print(stampMatrix.shape)
@@ -860,33 +726,41 @@ class VSource(SuperDevice):
             stampMatrix[index][self.NPlus] += 1
             stampMatrix[index][self.NMinus] -= 1
 
-            RHS = np.vstack((RHS, np.array([dcValue])))
-            
+            RHS = np.vstack((RHS, np.array([appointValue])))
+
             appendLine[self.name] = index
         return stampMatrix, RHS, appendLine
 
-    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
-        if dcValue == None:
+    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        if appointValue == None:
             if self.sin == True:
                 if t <= self.sin_td:
-                    dcValue = self.sin_v0
+                    appointValue = self.sin_v0
                 else:
-                    dcValue = self.sin_v0 + self.sin_va * np.exp(-(t - self.sin_td) * self.sin_theta) * np.sin(2 * np.pi * self.sin_freq * (t - self.sin_td))
+                    appointValue = self.sin_v0 + self.sin_va * np.exp(-(t - self.sin_td) * self.sin_theta) * np.sin(2 * np.pi * self.sin_freq * (t - self.sin_td))
             elif self.pulse:
                 if t <= self.pulse_td:
-                    dcValue = self.pulse_v1
+                    appointValue = self.pulse_v1
                 else:
                     time = (t - self.pulse_td) % self.pulse_per
                     if time <= self.pulse_tr:
-                        dcValue = (self.pulse_v2 - self.pulse_v1) / self.pulse_tr * time + self.pulse_v1
+                        if self.pulse_tr == 0:
+                            appointValue = self.pulse_v1
+                        else:
+                            appointValue = (self.pulse_v2 - self.pulse_v1) / self.pulse_tr * time + self.pulse_v1
                     elif time <= self.pulse_tr + self.pulse_pw:
-                        dcValue = self.pulse_v2
+                        appointValue = self.pulse_v2
                     elif time <= self.pulse_tr + self.pulse_pw + self.pulse_tf:
-                        dcValue = (self.pulse_v2 - self.pulse_v1) / self.pulse_tf * (self.pulse_tf + self.pulse_pw + self.pulse_tr - time) + self.pulse_v1 
+                        if self.pulse_tf == 0:
+                            appointValue = self.pulse_v2
+                        else:
+                            appointValue = (self.pulse_v2 - self.pulse_v1) / self.pulse_tf * (self.pulse_tf + self.pulse_pw + self.pulse_tr - time) + self.pulse_v1
                     else:
-                        dcValue = self.pulse_v1
+                        appointValue = self.pulse_v1
+            elif self.const:
+                appointValue = self.const_v
             else:
-                dcValue = self.value
+                appointValue = self.value
         if not appendLine.__contains__(self.name):
             index = stampMatrix.shape[0]
             # print(stampMatrix.shape)
@@ -897,33 +771,36 @@ class VSource(SuperDevice):
             stampMatrix[index][self.NPlus] += 1
             stampMatrix[index][self.NMinus] -= 1
             appendLine[self.name] = index
-            RHS = np.vstack((RHS, np.array([dcValue])))
+            RHS = np.vstack((RHS, np.array([appointValue])))
         return stampMatrix, RHS, appendLine
-    def loadBETimeStepControl(self, stampMatrix, RHS, appendLine, h, fakeTimes, fakeTranValue, t = 0, lastValue=[], dcValue = None):
+    def loadBETimeStepControl(self, stampMatrix, RHS, appendLine, h, fakeTimes, fakeTranValue, t = 0, lastValue=[], appointValue = None):
         target = t - h
         targetIndex = np.argmin(abs(np.array(fakeTimes) - target))
         lastValue = fakeTranValue[targetIndex]
-        if dcValue == None:
+        if appointValue == None:
             if self.sin == True:
                 if t <= self.sin_td:
-                    dcValue = self.sin_v0
+                    appointValue = self.sin_v0
                 else:
-                    dcValue = self.sin_v0 + self.sin_va * np.exp(-(t - self.sin_td) * self.sin_theta) * np.sin(2 * np.pi * self.sin_freq * (t - self.sin_td))
+                    appointValue = self.sin_v0 + self.sin_va * np.exp(-(t - self.sin_td) * self.sin_theta) * np.sin(2 * np.pi * self.sin_freq * (t - self.sin_td))
             elif self.pulse:
                 if t <= self.pulse_td:
-                    dcValue = self.pulse_v1
+                    appointValue = self.pulse_v1
                 else:
                     time = (t - self.pulse_td) % self.pulse_per
                     if time <= self.pulse_tr:
-                        dcValue = (self.pulse_v2 - self.pulse_v1) / self.pulse_tr * time + self.pulse_v1
+                        appointValue = (self.pulse_v2 - self.pulse_v1) / self.pulse_tr * time + self.pulse_v1
                     elif time <= self.pulse_tr + self.pulse_pw:
-                        dcValue = self.pulse_v2
+                        appointValue = self.pulse_v2
                     elif time <= self.pulse_tr + self.pulse_pw + self.pulse_tf:
-                        dcValue = (self.pulse_v2 - self.pulse_v1) / self.pulse_tf * (self.pulse_tf + self.pulse_pw + self.pulse_tr - time) + self.pulse_v1 
+                        appointValue = (self.pulse_v2 - self.pulse_v1) / self.pulse_tf * (self.pulse_tf + self.pulse_pw + self.pulse_tr - time) + self.pulse_v1
                     else:
-                        dcValue = self.pulse_v1
+                        appointValue = self.pulse_v1
+            elif self.const:
+                appointValue = self.const_v
+
             else:
-                dcValue = self.value
+                appointValue = self.value
         if not appendLine.__contains__(self.name):
             index = stampMatrix.shape[0]
             # print(stampMatrix.shape)
@@ -934,47 +811,14 @@ class VSource(SuperDevice):
             stampMatrix[index][self.NPlus] += 1
             stampMatrix[index][self.NMinus] -= 1
             appendLine[self.name] = index
-            RHS = np.vstack((RHS, np.array([dcValue])))
+            RHS = np.vstack((RHS, np.array([appointValue])))
         return stampMatrix, RHS, appendLine
 
-    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
-        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, dcValue)
-    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
-        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, dcValue)
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, appointValue)
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, appointValue)
 
-    def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
-        if not appendLine.__contains__(self.name):
-            index = stampMatrix.shape[0]
-            # print(stampMatrix.shape)
-            stampMatrix = expandMatrix(stampMatrix, 1)
-            # print(stampMatrix.shape, self.NPlus, index)
-            stampMatrix[self.NPlus][index] += 1
-            stampMatrix[self.NMinus][index] -= 1
-            stampMatrix[index][self.NPlus] += 1
-            stampMatrix[index][self.NMinus] -= 1
-            appendLine[self.name] = index
-
-        return stampMatrix, RHS, appendLine
-    
-    def loadBERHS(self, stampMatrix, RHS, appendLine, h, lastValue):
-        if not appendLine.__contains__(self.name):
-            index = len(RHS)        
-            appendLine[self.name] = index
-            RHS = np.vstack((RHS, np.array([self.value])))
-        return RHS, appendLine
-        
-    def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
-        return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
-    
-    def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
-        
-    def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
-        return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
-    
-    def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
-        
 class VCCS(SuperDevice):
     def __init__(self, name, connectionPoints, value, controlConnectionPoints, _type):
         super().__init__(name, connectionPoints, _type)
@@ -982,10 +826,10 @@ class VCCS(SuperDevice):
         self.controlPoints = controlConnectionPoints
         self.NCPlus = self.controlPoints[0]
         self.NCMinus = self.controlPoints[1]
-    
+
     '''DC
         +    -     |  RHS
-                   |   
+                   |
     +   G   -G     |   0
                    |
     -  -G    G     |   0
@@ -997,11 +841,11 @@ class VCCS(SuperDevice):
         stampMatrix[self.NMinus][self.NCPlus] -= self.value
         stampMatrix[self.NMinus][self.NCMinus] += self.value
         return stampMatrix, RHS, appendLine
-    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
-    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
-    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
         stampMatrix[self.NPlus][self.NCPlus] += self.value
@@ -1009,19 +853,19 @@ class VCCS(SuperDevice):
         stampMatrix[self.NMinus][self.NCPlus] -= self.value
         stampMatrix[self.NMinus][self.NCMinus] += self.value
         return stampMatrix, RHS, appendLine
-        
+
     def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return RHS, appendLine
 
     def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
-    
+
     def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
-        
+
     def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
-    
+
     def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
 
@@ -1032,10 +876,10 @@ class VCVS(SuperDevice):
         self.controlPoints = controlConnectionPoints
         self.NCPlus = self.controlPoints[0]
         self.NCMinus = self.controlPoints[1]
-    
+
     '''DC
         +    -    C+    C-    i   |  RHS
-                                  |   
+                                  |
     +   0    0    0     0     1   |   0
                                   |
     -   0    0    0     0    -1   |   0
@@ -1060,11 +904,11 @@ class VCVS(SuperDevice):
         RHS = np.vstack((RHS, np.array([0])))
         appendLine[self.name] = index
         return stampMatrix, RHS, appendLine
-    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
-    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
-    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
         index = stampMatrix.shape[0]
@@ -1080,7 +924,7 @@ class VCVS(SuperDevice):
         return stampMatrix, RHS, appendLine
 
     def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
-        index = len(RHS)        
+        index = len(RHS)
         appendLine[self.name] = index
         RHS = np.vstack((RHS, np.array([0])))
 
@@ -1088,13 +932,13 @@ class VCVS(SuperDevice):
 
     def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
-    
+
     def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
-        
+
     def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
-    
+
     def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
 
@@ -1110,7 +954,7 @@ class CCCS(SuperDevice):
 
     '''DC
         +    -    C+    C-    i   |  RHS
-                                  |   
+                                  |
     +   0    0    0     0     F   |   0
                                   |
     -   0    0    0     0    -F   |   0
@@ -1132,7 +976,7 @@ class CCCS(SuperDevice):
             stampMatrix[self.NCMinus][index] -= 1
             stampMatrix[index][self.NCPlus] += 1
             stampMatrix[index][self.NCMinus] -= -1
-            
+
             RHS = np.vstack((RHS, np.array([self.controlValue]))) # add vc
 
             appendLine[self.control] = index
@@ -1140,13 +984,13 @@ class CCCS(SuperDevice):
             index = appendLine[self.control]
             stampMatrix[self.NPlus][index] += self.value
             stampMatrix[self.NMinus][index] -= self.value
-            
+
         return stampMatrix, RHS, appendLine
-    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
-    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
-    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
         if not appendLine.__contains__(self.control):
@@ -1158,7 +1002,7 @@ class CCCS(SuperDevice):
             stampMatrix[self.NCMinus][index] -= 1
             stampMatrix[index][self.NCPlus] += 1
             stampMatrix[index][self.NCMinus] -= -1
-            
+
             appendLine[self.control] = index
         else:
             index = appendLine[self.control]
@@ -1169,7 +1013,7 @@ class CCCS(SuperDevice):
         if not appendLine.__contains__(self.control):
             index = len(RHS)
             appendLine[self.control] = index
-            
+
             RHS = np.vstack((RHS, np.array([self.controlValue]))) # add vc
         # else:
             # index = appendLine[self.control]
@@ -1180,13 +1024,13 @@ class CCCS(SuperDevice):
 
     def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
-    
+
     def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
-        
+
     def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
-    
+
     def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
 
@@ -1202,7 +1046,7 @@ class CCVS(SuperDevice):
 
     '''DC
         +    -    C+    C-    ik    ic   |  RHS
-                                         |   
+                                         |
     +   0    0    0     0     1     0    |   0
                                          |
     -   0    0    0     0    -1     0    |   0
@@ -1234,7 +1078,7 @@ class CCVS(SuperDevice):
             stampMatrix[indexK][indexC] -= self.value
             RHS = np.vstack((RHS, np.array([0]))) # add vc
             RHS = np.vstack((RHS, np.array([self.controlValue]))) # add vc
-            
+
             appendLine[self.control] = indexC
             appendLine[self.name] = indexK
         else:
@@ -1250,12 +1094,12 @@ class CCVS(SuperDevice):
             RHS = np.vstack((RHS, np.array([0]))) # add vc
             appendLine[self.name] = indexK
         return stampMatrix, RHS, appendLine
-    
-    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+
+    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
-    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
-    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], dcValue = None):
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
 
     def loadBEMatrix(self, stampMatrix, RHS, appendLine, h):
@@ -1273,7 +1117,7 @@ class CCVS(SuperDevice):
             stampMatrix[self.NCPlus][indexC] -= 1
             stampMatrix[self.NCMinus][indexC] -= 1
             stampMatrix[indexK][indexC] -= self.value
-            
+
             appendLine[self.control] = indexC
             appendLine[self.name] = indexK
         else:
@@ -1287,7 +1131,7 @@ class CCVS(SuperDevice):
             stampMatrix[indexK][self.NMinus] -= 1
             stampMatrix[indexK][indexC] -= self.value
             appendLine[self.name] = indexK
-            
+
         return stampMatrix, RHS, appendLine
 
     def loadBERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
@@ -1304,15 +1148,15 @@ class CCVS(SuperDevice):
             indexK = stampMatrix.shape[0]
             RHS = np.vstack((RHS, np.array([0]))) # add vc
             appendLine[self.name] = indexK
-            
+
         return RHS, appendLine
 
     def loadFEMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
-    
+
     def loadFERHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
-        
+
     def loadTRMatrix(self, stampMatrix, RHS, appendLine, step):
         return self.loadBEMatrix(stampMatrix, RHS, appendLine, step)
 

@@ -25,7 +25,7 @@ class Parser:
                 
     def startParser(self):
         # print('Start parser now. \n')
-        try:
+        # try:
             netlistList = self.netlist.splitlines()
             # handle the + continue line
             # print('Read netlist. \n')
@@ -61,18 +61,18 @@ class Parser:
             if not self.hasGround:
                 raise NoGroundError('No ground!')
             return self.nodeDict, self.deviceList, self.commandList
-        except NoGroundError as ng:
-            self.clean()
-            print('ERROR NoGroundError', ng)
-            return self.nodeDict, self.deviceList, self.commandList
-        except NoEnddError as ne:
-            self.clean()
-            print('ERROR NoEnddError', ne)
-            return self.nodeDict, self.deviceList, self.commandList
-        except Exception as e:
-            self.clean()
-            print('Something ERROR', e)
-            return self.nodeDict, self.deviceList, self.commandList
+        # except NoGroundError as ng:
+        #     self.clean()
+        #     print('ERROR NoGroundError', ng)
+        #     return self.nodeDict, self.deviceList, self.commandList
+        # except NoEnddError as ne:
+        #     self.clean()
+        #     print('ERROR NoEnddError', ne)
+        #     return self.nodeDict, self.deviceList, self.commandList
+        # except Exception as e:
+        #     self.clean()
+        #     print('Something ERROR', e)
+        #     return self.nodeDict, self.deviceList, self.commandList
 
     def clean(self):
         self.nodeDict = {}
@@ -108,7 +108,7 @@ class Parser:
         line.strip()
         deviceParseType = parseType[line[0]]
         if deviceParseType == 0:
-            self.parseRLC(line.strip().split())
+            self.parseRLC(line)
         elif deviceParseType == 1:
             self.parseEFGH(line.strip().split())
         elif deviceParseType == 2:
@@ -138,6 +138,8 @@ class Parser:
         elif commandParams['type'] == 'TRAN':
             commandParams['tstep'] = stringToNum(commandList[1])
             commandParams['tstop'] = stringToNum(commandList[2])
+            if len(commandList) > 3:
+                commandParams['tstart'] = stringToNum(commandList[3])
         elif commandParams['type'] == 'DC':
             commandParams['src1'] = commandList[1]
             commandParams['start1'] = stringToNum(commandList[2])
@@ -226,18 +228,30 @@ class Parser:
         self.commandList.append(commandParams)
     
     def parseRLC(self, device):
+        device = device.strip()
+        device = stripSpaceAroundEqualSign(device)
+        device = device.split()
+
         deviceType = device[0][0]
         name = device[0]
         connectionPoints = (device[1], device[2])
         self.updateNodeDict(device[1], device[2])
         value = stringToNum(device[3])
         # print(device)
-        self.deviceList.append({
-            'deviceType': deviceType,
-            'name': name,
-            'connectionPoints': connectionPoints,
-            'value': value
-        })
+        deviceParams = initDeviceParams(device[0][0], device[0], (device[1], device[2]))
+        deviceParams['value'] = stringToNum(device[3])
+
+        mDict = {0: 'W', 1: 'L'}
+        for k, param in enumerate(device[6:]):
+            paramPair = param.split('=')
+            if len(paramPair) == 1:
+                deviceParams[mDict[k]] = paramPair[0]
+            else:
+                deviceParams[paramPair[0].strip()] = paramPair[1].strip()
+
+        # if len(device) > 4:
+        self.deviceList.append(deviceParams)
+
 
     def parseD(self, device):
         deviceType = device[0][0]
@@ -261,13 +275,18 @@ class Parser:
         self.updateNodeDict(device[1], device[2], device[3], device[4])
         deviceParams['name'] = device[0]
         deviceParams['MNAME'] = device[5]
-        for param in device[6:]:
+
+        mDict = {0: 'W', 1: 'L'}
+        for k, param in enumerate(device[6:]):
             paramPair = param.split('=')
-            deviceParams[paramPair[0].strip()] = paramPair[1].strip()
+            if len(paramPair) == 1:
+                deviceParams[mDict[k]] = paramPair[0]
+            else:
+                deviceParams[paramPair[0].strip()] = paramPair[1].strip()
         self.deviceList.append(deviceParams)
 
     def parseVI(self, device):
-        params = deleteCharsInString(('(', ')'), device).split()
+        params = deleteCharsInString(('(', ')', ','), device).split()
         # print(params)
         deviceParams = initDeviceParams(params[0][0], params[0], (params[1], params[2]))
         self.updateNodeDict(params[1], params[2])
@@ -280,6 +299,16 @@ class Parser:
                 function = param
                 functionParams = []
             else:
+                if function == 'DC':
+                    if len(functionParams) == 1:
+                        deviceParams[function] = tuple(functionParams)
+                        function = 'AC'
+                        functionParams = [param]   
+                elif function == 'AC':
+                    if len(functionParams) == 2:
+                        deviceParams[function] = tuple(functionParams)
+                        function = 'DC'
+                        functionParams = [param]   
                 functionParams.append(param)
         if len(functionParams):
             deviceParams[function] = tuple(functionParams)

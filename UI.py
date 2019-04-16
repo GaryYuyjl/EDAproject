@@ -18,12 +18,6 @@ class GUI(QMainWindow):
     def __init__(self, ):
         super().__init__()
         self.initUI()
-        self.devices = []
-        self.nodeDict = {}
-        self.nodeCount = 0
-        self.deviceList = []
-        self.commandList = []
-
         self.mySpice = Spice()
 
     def saveFile(self):
@@ -39,6 +33,13 @@ class GUI(QMainWindow):
             with open(name[0], 'r') as file:
                 self.textEdit.setText(file.read())
                 
+    def updateButtonStatus(self):
+        if (not hasattr(self, 'mySpice')) or len(self.mySpice.deviceList) == 0:
+            self.solveTRANButton.setDisabled(True)
+            self.solveDCButton.setDisabled(True)
+        else:
+            self.solveTRANButton.setEnabled(True)
+            self.solveDCButton.setEnabled(True)
 
     def initUI(self):              
 
@@ -88,12 +89,19 @@ class GUI(QMainWindow):
         solveDC.setShortcut('Ctrl+D')
         solveDC.setStatusTip('SolveDC')
         solveDC.triggered.connect(self.solveDC)
+        self.solveDCButton = solveDC
 
         solveTRAN = QAction('SolveTRAN', self)
         solveTRAN.setShortcut('Ctrl+T')
         solveTRAN.setStatusTip('SolveTRAN')
         solveTRAN.triggered.connect(self.solveTRAN)
-        
+        self.statusBar()
+        self.solveTRANButton = solveTRAN
+ 
+        clearConsole = QAction('clearConsole', self)
+        clearConsole.setShortcut('Ctrl+D')
+        clearConsole.setStatusTip('clearConsole')
+        clearConsole.triggered.connect(self.clearConsole)
         self.statusBar()
  
         # init tool bar and shorcuts
@@ -123,6 +131,7 @@ class GUI(QMainWindow):
          
         sys.stdout = Stream(newText = self.outputWritten)  
         sys.stderr = Stream(newText = self.outputWritten)  
+        self.updateButtonStatus()
 
     def outputWritten(self, text):  
         cursor = self.consoleText.textCursor()  
@@ -131,13 +140,17 @@ class GUI(QMainWindow):
         self.consoleText.setTextCursor(cursor)  
         self.consoleText.ensureCursorVisible()   
 
+    def clearConsole(self):
+        self.consoleText.setPlainText('CONSOLE. \n')
+
     def parse(self):
         text = self.textEdit.toPlainText()
         # myParser = Parser(text, self.nodeDict, self.deviceList, self.commandList)
         # myParser.startParser()
         self.mySpice.parse(text)
         self.consoleText.insertPlainText('finish parse\n')
-
+        self.updateButtonStatus()
+        
     def solveDC(self):
         self.mySpice.solve()
         self.mySpice.plotDCWithMatplotlib(0, -1, -0.01)

@@ -34,7 +34,11 @@ parseType = {
 def initDeviceParams(deviceType, deviceName = None, connectionPoints = None):
     # print(deviceType)
     if parseType[deviceType] == 0:
-        pass
+        return {
+            'deviceType': deviceType,
+            'name': deviceName,
+            'connectionPoints': connectionPoints,
+        }
     elif parseType[deviceType] == 1:
         return {
             'deviceType': deviceType,
