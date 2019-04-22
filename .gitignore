@@ -5,3 +5,4 @@
 *.rar
 *.ipynb
 *.pyc
+__pycache__/Device.cpython-36.pyc

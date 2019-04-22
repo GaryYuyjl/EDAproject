@@ -11,9 +11,13 @@ class Spice:
         self.deviceList = []
         self.commandList = []
         self.appendLine = {}
+        self.revAppendLine = {}
+        self.revNodeDict = {}
         self.tranValueBE = []
         self.tranValueTR = []
         self.tranValueFE = []
+        self.DCValue = []
+        self.ACValue = []    
     # this function parse the netlist
     def parse(self, netlist):
         self.devices = []
@@ -25,7 +29,8 @@ class Spice:
         myParser = Parser(self.netlist, self.nodeDict, self.deviceList, self.commandList)
         self.nodeDict, self.deviceList, self.commandList = myParser.startParser()
         self.prepareAnalysis()
-        print(self.deviceList)
+        self.revNodeDict = {v : k for k, v in self.nodeDict.items()}
+        print(self.nodeDict)
         for command in self.commandList:
             print(command)
             if command['type'] == 'TRAN':
@@ -36,8 +41,8 @@ class Spice:
                     start = command['tstart']
                 else:
                     start = 0
-                # self.solveTran('FE', step, stop, start)
-                self.solveTran('BE', step, stop, start)
+                self.solveTran('FE', step, stop, start)
+                # self.solveTran('BE', step, stop, start)
                 # self.solveTran('TR', step, stop, start)
             elif command['type'] == 'DC':
                 src1 = command['src1']
@@ -55,6 +60,12 @@ class Spice:
                     stop2 = None
                     incr2 = None
                 self.solveDC(src1, start1, stop1, incr1, src2, start2, stop2, incr2)
+            elif command['type'] == 'AC':
+                variation = command['variation']
+                pointsSelect = command['pointsSelect']
+                fstart = command['fstart']
+                fstop = command['fstop']
+                self.solveAC(variation, pointsSelect, fstart, fstop)
             elif command['type'] == 'OP': 
                 # DC
                 self.solve()
@@ -69,7 +80,11 @@ class Spice:
             if device['deviceType'] == 'R':
                 self.devices.append(Resistor(device['name'], device['connectionPoints'], device['value'], device['deviceType']))
             elif device['deviceType'] == 'L':
-                self.devices.append(Inductor(device['name'], device['connectionPoints'], device['value'], device['deviceType']))
+                if device.__contains__('IC'):
+                    ic = device['IC']
+                else:
+                    ic = 0
+                self.devices.append(Inductor(device['name'], device['connectionPoints'], device['value'], device['deviceType'], ic))
             elif device['deviceType'] == 'D':
                 self.devices.append(Diode(device['name'], device['connectionPoints'], device['deviceType']))
             elif device['deviceType'] == 'M':
@@ -83,7 +98,11 @@ class Spice:
                     L = None
                 self.devices.append(Mosfet(device['name'], device['connectionPoints'], device['deviceType'], device['MNAME'], W = W, L = L))
             elif device['deviceType'] == 'C':
-                self.devices.append(Capacitor(device['name'], device['connectionPoints'], device['value'], device['deviceType']))
+                if device.__contains__('IC'):
+                    ic = device['IC']
+                else:
+                    ic = 0
+                self.devices.append(Capacitor(device['name'], device['connectionPoints'], device['value'], device['deviceType'], ic))
             elif device['deviceType'] == 'I':
                 self.devices.append(ISource(device['name'], device['connectionPoints'], device['DC'], device['deviceType']))
             elif device['deviceType'] == 'V':
@@ -140,17 +159,20 @@ class Spice:
         self.tranValueBE = []
         self.tranValueTR = []
         self.tranValueFE = []
+        self.DCValue = []
+        self.ACValue = []
 
     # this function generate the MNA
     def solve(self):
         # try:
             solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
             self.iteration = solve.stamping()
+            print(self.iteration)
         # except:
             # print('Solve DC Error!')
             
     def showIteration(self):
-        plt.figure(figsize=(10, 6))
+        # plt.figure(figsize=(10, 6))
         x = np.arange(len(self.iteration) - 1)
         plt.plot(x, self.iteration[..., 2][1:] - self.iteration[..., 2][1:][-1], label='interation')
         plt.legend(loc='best')
@@ -159,7 +181,14 @@ class Spice:
         plt.ylabel("V") 
         plt.show()
 
-    
+    def solveAC(self, variation, pointsSelect, fstart, fstop):
+        self.ACValue = []    
+        solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
+        ACValue, self.appendLine, self.times = solve.stampingAC(variation, pointsSelect, fstart, fstop)
+        self.revAppendLine = {v : k for k, v in self.appendLine.items()}
+        self.ACValue.append(ACValue)
+        # print(self.ACValue)
+
     def solveDC(self, src, start, stop, incr, src2, start2, stop2, incr2):
         self.DCValue = []
         if not src2 == None:
@@ -171,13 +200,45 @@ class Spice:
                     'val2': val}
                     )
                 self.DCValue.append(DCValue)
+                self.revAppendLine = {v : k for k, v in self.appendLine.items()}
+
         else:
             print('solveDc without src2')
             solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
             DCValue, self.appendLine, self.times = solve.stampingDC(src, start, stop, incr)
             self.DCValue.append(DCValue)
+            self.revAppendLine = {v : k for k, v in self.appendLine.items()}
 
     def plotDCWithMatplotlib(self, abscissa = None, mannual=[]):
+        # print(self.appendLine)
+        # print(self.nodeDict)
+        if not abscissa == None:
+            abscissa = self.nodeDict[abscissa]
+        for command in self.commandList:
+            print(command)
+            if command['type'] == 'PRINT' or command['type'] == 'PLOT':
+                # if command['prtype'] == 'DC':
+                # plt.figure(figsize=(10, 6))
+                width = 1
+                height = len(command['ovs'])
+
+                for k, ov in enumerate(command['ovs']):
+                    if ov['ovtype'] == 'V':
+                        node1 = self.nodeDict[ov['ovnodes'][0]]
+                        node2 = self.nodeDict[ov['ovnodes'][1]]
+                        self.plotDC(self.times, abscissa, {
+                            'mode': 'V',
+                            'nodes': (node1, node2)})
+                    elif ov['ovtype'] == 'I':
+                        # node1 = self.nodeDict['I' + ov['ovnodes'][0]]
+                        node1 = self.appendLine[ov['ovnodes'][0]]
+                        self.plotDC(self.times, abscissa, {
+                            'mode': 'I',
+                            'nodes': node1})
+    
+            plt.show()
+
+    def plotACWithMatplotlib(self, abscissa = None):
         # print(self.appendLine)
         # print(self.nodeDict)
         if not abscissa == None:
@@ -186,26 +247,90 @@ class Spice:
             # print(command)
             if command['type'] == 'PRINT' or command['type'] == 'PLOT':
                 # if command['prtype'] == 'DC':
-                    for ov in command['ovs']:
-                        if ov['ovtype'] == 'V':
-                            node1 = self.nodeDict[ov['ovnodes'][0]]
-                            node2 = self.nodeDict[ov['ovnodes'][1]]
-                            self.plotDC(self.times, abscissa, {
-                                'mode': 'V',
-                                'nodes': (node1, node2)})
-                        elif ov['ovtype'] == 'I':
-                            # node1 = self.nodeDict['I' + ov['ovnodes'][0]]
-                            node1 = self.appendLine[ov['ovnodes'][0]]
-                            self.plotDC(self.times, abscissa, {
-                                'mode': 'I',
-                                'nodes': node1})
+                # plt.figure(figsize=(10, 6))
+                width = 1
+                height = len(command['ovs'])
+                for k, ov in enumerate(command['ovs']):
+                    if len(ov['ovtype']) == 1:
+                        subMode = 'M'
+                    else:
+                        subMode = ov['ovtype'][1:]
+                    print('mode', subMode)
+                    if ov['ovtype'][0] == 'V':
+                        node1 = self.nodeDict[ov['ovnodes'][0]]
+                        node2 = self.nodeDict[ov['ovnodes'][1]]
+                        self.plotAC(self.times, abscissa, {
+                            'mode': 'V',
+                            'subMode': subMode,
+                            'nodes': (node1, node2)})
+                    elif ov['ovtype'][0] == 'I':
+                        # node1 = self.nodeDict['I' + ov['ovnodes'][0]]
+                        node1 = self.appendLine[ov['ovnodes'][0]]
+                        self.plotAC(self.times, abscissa, {
+                            'mode': 'I',
+                            'subMode': subMode,
+                            'nodes': node1})
+        plt.show()
+
+
+    def plotAC(self, times, abscissaNode=None, params = {}):
+        # print(self.DCValue)
+        print('plotdc', params)
+        if params=={}:
+            return
+        subMode = params['subMode']
+        # plt.figure(figsize=(10, 6))
+        # arr = np.arange(start, stop, incr)
+        arr = times
+        ACValue = self.ACValue[0]
+        if params['mode'] == 'V':
+            node1 = params['nodes'][0]
+            node2 = params['nodes'][1]
+            # plt.figure('Vnode%snode%s' % (self.revNodeDict[node1], self.revNodeDict[node2]))
+            print(node1, node2, self.tranValueFE)
+            if subMode == 'M':
+                y1 = np.abs(ACValue[..., node1] - ACValue[..., node2])
+            elif subMode == 'I':
+                y1 = np.imag(ACValue[..., node1] - ACValue[..., node2])
+            elif subMode == 'R':
+                y1 = np.real(ACValue[..., node1] - ACValue[..., node2])
+            elif subMode == 'P':
+                y1 = np.angle(ACValue[..., node1] - ACValue[..., node2])
+            elif subMode == 'DB':
+                y1 = 20 * np.log10(np.abs(ACValue[..., node1] - ACValue[..., node2]))
+            # for val in arr:
+            # print(ACValue, self.nodeDict)
+            if not abscissaNode == None:
+                x1 = ACValue[..., abscissaNode][1:]
+            else:
+                x1 = arr
+            print('node', node1, node2, int(node2))
+            print('Vnode%snode%s' % (self.revNodeDict[node1], self.revNodeDict[node2]))
+            plt.plot(x1, y1[1:], label='Vnode%snode%s' % (self.revNodeDict[node1], self.revNodeDict[node2]))
+            plt.legend(loc='best')
+            plt.title('Vnode%snode%s' % (self.revNodeDict[node1], self.revNodeDict[node2])) 
+            plt.xlabel("V") 
+            plt.ylabel("V") 
+        elif params['mode'] == 'I':
+            node1 = params['nodes']
+            # plt.figure('I%s' % params['nodes'])
+            y1 = ACValue[..., node1]
+            if not abscissaNode == None:
+                x1 = ACValue[..., abscissaNode][1:]
+            else:
+                x1 = arr
+            plt.plot(x1,y1[1:], label='I%s' % self.revAppendLine[params['nodes']])
+            plt.legend(loc='best')
+            plt.title('I%s' % self.revAppendLine[params['nodes']]) 
+            plt.xlabel("V") 
+            plt.ylabel("I") 
 
     def plotDC(self, times, abscissaNode=None, params = {}):
         # print(self.DCValue)
         # print('plotdc', params)
         if params=={}:
             return
-        plt.figure(figsize=(10, 6))
+        # plt.figure(figsize=(10, 6))
         # arr = np.arange(start, stop, incr)
         arr = times
         if len(self.DCValue) == 1:
@@ -213,6 +338,7 @@ class Spice:
             if params['mode'] == 'V':
                 node1 = params['nodes'][0]
                 node2 = params['nodes'][1]
+                # plt.figure('Vnode%snode%s' % (self.revNodeDict[node1], self.revNodeDict[node2]))
                 # print(node1, node2, self.tranValueFE)
                 y1 = DCValue[..., node1] - DCValue[..., node2]
 
@@ -222,28 +348,29 @@ class Spice:
                     x1 = DCValue[..., abscissaNode][1:]
                 else:
                     x1 = arr
-                plt.plot(x1, y1[1:], label="DC")
-
+                plt.plot(x1, y1[1:], label='Vnode%snode%s' % (self.revNodeDict[node1], self.revNodeDict[node2]))
+            
                 plt.legend(loc='best')
-                plt.title("demo") 
+                plt.title('Vnode%snode%s' % (self.revNodeDict[node1], self.revNodeDict[node2])) 
                 plt.xlabel("V") 
                 plt.ylabel("V") 
             elif params['mode'] == 'I':
                 node1 = params['nodes']
+                # plt.figure('I%s' % params['nodes'])
                 y1 = DCValue[..., node1]
                 if not abscissaNode == None:
                     x1 = DCValue[..., abscissaNode][1:]
                 else:
                     x1 = arr
-
-                plt.plot(x1,y1[1:], label="DC")
+                plt.plot(x1,y1[1:], label='I%s' % self.revAppendLine[params['nodes']])
                 plt.legend(loc='best')
-                plt.title("demo") 
+                plt.title(label='I%s' % self.revAppendLine[params['nodes']])
                 plt.xlabel("V") 
                 plt.ylabel("I") 
         else:
             for k,DCValue in enumerate(self.DCValue):
                 if params['mode'] == 'V':
+                    isV = True
                     node1 = params['nodes'][0]
                     node2 = params['nodes'][1]
                     # print(node1, node2, self.tranValueFE)
@@ -255,20 +382,26 @@ class Spice:
                         x1 = DCValue[..., abscissaNode][1:]
                     else:
                         x1 = arr
-                    plt.plot(x1, y1[1:], label=("DC" + str(k)))
-                    plt.show()
+
+                    plt.plot(x1, y1[1:], label='V%dnode%snode%s' % (k, self.revNodeDict[node1], self.revNodeDict[node2]))
+                    # plt.show()
                 elif params['mode'] == 'I':
+                    isV = False
                     node1 = params['nodes']
                     y1 = DCValue[..., node1]
                     if not abscissaNode == None:
                         x1 = DCValue[..., abscissaNode][1:]
                     else:
                         x1 = arr
-                    plt.plot(x1,y1[1:], label=("DC" + str(k)))
+
+                    plt.plot(x1,y1[1:], label='I%dnode%s' % (k, self.revAppendLine[params['nodes']]))
                     plt.legend(loc='best')
-                    plt.title("demo") 
                     plt.xlabel("V") 
                     plt.ylabel("I") 
+            if isV:
+                plt.title('V' + self.revNodeDict[params['nodes'][0]] + self.revNodeDict[params['nodes'][1]])
+            else:
+                plt.title('I%s' % self.revAppendLine[params['nodes']])
         plt.show()
 
 
@@ -285,10 +418,12 @@ class Spice:
                 print('step stop start in spice', step, stop, start)
             elif method == 'FE':
                 print('FE')
-                self.tranValueFE, self.appendLine, self.times = solve.stampingFE(step, stop)
+                self.tranValueFE, self.appendLine, self.times = solve.stampingFE(step, stop, start)
             elif method == 'TR':
                 print(' TR')
-                self.tranValueTR, self.appendLine, self.times = solve.stampingTR(step, stop)
+                self.tranValueTR, self.appendLine, self.times = solve.stampingTR(step, stop, start)
+            self.revAppendLine = {v : k for k, v in self.appendLine.items()}
+
         # except Exception as e:
         #     print('Tran ERROR!', e)
     
@@ -296,8 +431,11 @@ class Spice:
     def plotTranWithMatplotlib(self, mannual=[]):
         for command in self.commandList:
             if command['type'] == 'PRINT' or command['type'] == 'PLOT':
+                # plt.figure(figsize=(10, 6))
+                width = 1
+                height = len(command['ovs'])
                 if command['prtype'] == 'TRAN':
-                    for ov in command['ovs']:
+                    for k, ov in enumerate(command['ovs']):
                         if ov['ovtype'] == 'V':
                             node1 = self.nodeDict[ov['ovnodes'][0]]
                             node2 = self.nodeDict[ov['ovnodes'][1]]
@@ -310,69 +448,72 @@ class Spice:
                             self.plotTran(mannual, {
                                 'mode': 'I',
                                 'nodes': node1})
+            plt.show()
 
     # plot each part
     def plotTran(self, mannual=[], params = {}):
         # print(self.tranValueBE, self.tranValueFE, self.tranValueTR)
         if params=={}:
             return
-        plt.figure(figsize=(10, 6))
+        # plt.figure(figsize=(10, 6))
         # x = np.arange(0, stop * step, step)
         x = np.array(self.times)[1:]
         if params['mode'] == 'V':
             node1 = params['nodes'][0]
             node2 = params['nodes'][1]
-            # print(node1, node2, self.tranValueFE)
+            # plt.figure('Vnode%snode%s' % (self.revNodeDict[node1], self.revNodeDict[node2]))
+            # print(node1, node2, self.tranValueFE
             if len(self.tranValueFE):
                 y1 = self.tranValueFE[..., node1] - self.tranValueFE[..., node2]
-                plt.plot(x,y1[1:], label="FE")
+                plt.plot(x,y1[1:], label='Vnode%snode%s' % (self.revNodeDict[node1], self.revNodeDict[node2]))
                 # plt.scatter(x,y1[1:], s=1, label="FE")
             if len(self.tranValueBE):
                 y2 = self.tranValueBE[..., node1] - self.tranValueBE[..., node2]
                 print(x.size, y2.size)
-                plt.plot(x,y2[1:], label="BE")
+                plt.plot(x,y2[1:], label='Vnode%snode%s' % (self.revNodeDict[node1], self.revNodeDict[node2]))
                 # plt.scatter(x,y2[1:], s=1, label="BE")
             if len(self.tranValueTR):
                 y3 = self.tranValueTR[..., node1] - self.tranValueTR[..., node2] 
-                plt.plot(x,y3[1:], label="TR")
+                plt.plot(x,y3[1:], label='Vnode%snode%s' % (self.revNodeDict[node1], self.revNodeDict[node2]))
                 # plt.scatter(x,y3[1:], s=1, label="TR")
             if len(mannual):
                 plt.plot(x,mannual, label="mannual")
                 # plt.scatter(x,mannual, label="mannual")
             plt.legend(loc='best')
-            plt.title("demo") 
+            plt.title('Vnode%snode%s' % (self.revNodeDict[node1], self.revNodeDict[node2])) 
             plt.xlabel("t") 
             plt.ylabel("V") 
-            plt.show()
+            # plt.show()
         elif params['mode'] == 'I':
             node1 = params['nodes']
+            # plt.figure('I%s' % params['nodes']
             if len(self.tranValueFE):
                 y1 = self.tranValueFE[..., node1]
-                plt.plot(x,y1[1:], label="FE")
+                plt.plot(x,y1[1:], label='I%s' % self.revAppendLine[params['nodes']])
                 # plt.scatter(x,y1[1:], s=1, label="FE")
             if len(self.tranValueBE):
                 y2 = self.tranValueBE[..., node1]
-                plt.plot(x,y2[1:], label="BE")
+                plt.plot(x,y2[1:], label='I%s' % self.revAppendLine[params['nodes']])
                 # plt.scatter(x,y2[1:], s=1, label="BE")
             if len(self.tranValueTR):
                 y3 = self.tranValueTR[..., node1]
-                plt.plot(x,y3[1:], label="TR")
+                plt.plot(x,y3[1:], label='I%s' % self.revAppendLine[params['nodes']])
                 # plt.scatter(x,y3[1:], s=1, label="TR")
             if len(mannual):
                 plt.plot(x,mannual, label="mannual")
                 # plt.scatter(x,mannual, label="mannual")
             plt.legend(loc='best')
-            plt.title("demo") 
+            plt.title('I%s' % self.revAppendLine[params['nodes']]) 
             plt.xlabel("t") 
             plt.ylabel("I") 
-            plt.show()
+            # plt.show()
 
     def printMNAwithDiode(self, netlist):
         solve = Solve(self.nodeDict, self.deviceList, self.commandList, self.devices)
         self.iteration = solve.stamping(printMNA = True)
 
     def showNewtonRaphson(self):
-        plt.figure(figsize=(10, 6))
+        # plt.figure(figsize=(10, 6))
         step = 0.00001
         x = np.arange(0, 0.02, step)
         y = 2 / 3 * x - 5 / 3 + np.exp(40 * x)

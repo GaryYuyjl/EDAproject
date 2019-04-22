@@ -24,7 +24,7 @@ class Solve:
         self.appendLine = {}
 
 
-    # solve the DC
+    # solve the OP
     def stamping(self, printMNA = False):
         # generate the MNA matrix by calling load function in each device
         for device in self.devices:
@@ -66,11 +66,16 @@ class Solve:
         # for k, v in enumerate(init):
         #     if v == 0:
                 # init[k] = 0.1
+        hasMos = False
         for device in self.devices:
-            if device.name == src and device.type == 'V': # a voltage source need to be sweeped
-                init[device.NPlus] = val
-            elif device.type == 'V':
-                init[device.NPlus] = device.value
+            if device.type == 'M':
+                hasMos = True
+        if hasMos:
+            for device in self.devices:
+                if device.name == src and device.type == 'V': # a voltage source need to be sweeped
+                    init[device.NPlus] = val
+                elif device.type == 'V':
+                    init[device.NPlus] = device.value        
 
     def stampingDC(self, src, start, stop, incr, sweep = {}):
         # print(sweep)
@@ -82,7 +87,6 @@ class Solve:
             val2 = None
         # print('src2', src2, val2)
         arr = np.arange(start, stop, incr)
-        print(arr)
         for device in self.devices:
             if not (device.type == 'D' or device.type == 'M'):
                 self.stampMatrix, self.RHS, self.appendLine = device.loadDC(self.stampMatrix, self.RHS, self.appendLine)
@@ -134,8 +138,57 @@ class Solve:
                 x_ = x
             self.DCValue = np.append(self.DCValue, [x_.T], 0)
 
-        print('dcvalue', self.DCValue)
+        # print('dcvalue', self.DCValue)
         return self.DCValue, self.appendLine, arr
+
+    def stampingAC(self, variation, pointsSelect, fstart, fstop):
+        # print(sweep)
+        arr = np.arange(fstart, fstop, 1 / pointsSelect)
+        self.ACValue = np.zeros((1, self.stampMatrix.shape[1]), dtype='complex_')
+        self.stampMatrix = np.zeros((self.length, self.length), dtype='complex_')
+        self.RHS = np.zeros((self.length, 1), dtype='complex_')
+
+        for device in self.devices:
+            if not (device.type == 'D' or device.type == 'M'):
+                self.stampMatrix, self.RHS, self.appendLine = device.loadAC(self.stampMatrix, self.RHS, self.appendLine, 0)
+        self.ACValue = np.zeros((1, self.stampMatrix.shape[1]), dtype='complex_')
+        self.stampMatrix = np.zeros((self.length, self.length), dtype='complex_')
+        self.RHS = np.zeros((self.length, 1), dtype='complex_')
+        result = []
+        # print(self.stampMatrix, self.RHS)
+        for val in arr:
+            error = 100
+            x_ = self.ACValue[-1]
+            
+            # handle nodeset
+            hasNodeset = False
+            self.addVoltageToInit('', val, x_)
+            # x_[0] = 0
+            # x_[2] = val
+            # print('x_', x_)
+            count = 0
+            while abs(error) > 1e-5:
+                count += 1
+                if count > 1000:
+                    print('wrong')
+                    break
+
+                stampMatrixWithNonlinear = copy.deepcopy(self.stampMatrix)
+                tmpRHS = copy.deepcopy(self.RHS)
+                RHSAppendLine = {}  
+                for device in self.devices:
+                    stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadAC(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, val, lastValue = x_, appointValue = None)
+                # print(stampMatrixWithNonlinear[1:, 1:], tmpRHS[1:])
+                x = np.linalg.solve(stampMatrixWithNonlinear[1:, 1:], tmpRHS[1:])
+                x = np.insert(x, 0, np.array([0]))
+                error = np.sum(x - x_)
+                # print('sove', x)
+                # print('error', error)
+                x_ = x
+            self.ACValue = np.append(self.ACValue, [x_.T], 0)
+
+        # print('Acvalue', self.ACValue)
+        return self.ACValue, self.appendLine, arr
 
     #  solve TRAN with BE
     def stampingBEWithStepControl(self, step, stop, start):
@@ -146,8 +199,8 @@ class Solve:
         nowTime = 0
         times = [nowTime]
         # to get more points for the time step control
-        fakeStep = step / 16
-        fakeTranValue, fakeAppendLine, fakeTimes = self.stampingBE(fakeStep, stop * 16)
+        fakeStep = step / 4
+        fakeTranValue, fakeAppendLine, fakeTimes = self.stampingBE(fakeStep, stop * 4, start)
 
         self.clear()
         
@@ -174,6 +227,8 @@ class Solve:
             while True:
                 needChangeStepFlag = False
                 for src in self.devices:
+                    if not nowTime == start:
+                        break
                     if src.type == 'V':
                         self.addVoltageToInit(src.name, src.value, x_)
                 count = 0
@@ -250,8 +305,13 @@ class Solve:
             x_ = self.tranValueBE[-1]
             xnoInterate = self.tranValueBE[-1]
             for src in self.devices:
+                if not nowTime == start:
+                    break
                 if src.type == 'V':
                     self.addVoltageToInit(src.name, src.value, x_)
+                elif (src.type =='C' or src.type == 'L') and nowTime == start:
+                    src.addIC(x_, self.appendLine)
+            # print('after ic', x_)
             count = 0
             while abs(error) > 1e-3:
                 count += 1
@@ -283,7 +343,7 @@ class Solve:
         # print('appendLine\n', self.appendLine)
         return self.tranValueBE, self.appendLine, times
 
-    def stampingFEWithStepControl(self, step, stop):
+    def stampingFEWithStepControl(self, step, stop, start):
         stopTime = stop
         # how to define the epsilon
         epsilon = step * 10000
@@ -291,7 +351,7 @@ class Solve:
         times = [nowTime]
         # to get more points for the time step control
         fakeStep = step / 16
-        fakeTranValue, fakeAppendLine, fakeTimes = self.stampingFE(fakeStep, stop * 16)
+        fakeTranValue, fakeAppendLine, fakeTimes = self.stampingFE(fakeStep, stop * 16, start)
 
         self.clear()
         
@@ -318,8 +378,12 @@ class Solve:
             while True:
                 needChangeStepFlag = False
                 for src in self.devices:
+                    if not nowTime == start:
+                        break
                     if src.type == 'V':
                         self.addVoltageToInit(src.name, src.value, x_)
+                    elif (src.type =='C' or src.type == 'L') and nowTime == start:
+                        src.addIC(x_, self.appendLine)
                 count = 0
                 # N-R
                 while abs(error) > 1e-3:
@@ -377,8 +441,8 @@ class Solve:
         return self.tranValueFE, self.appendLine, times
 
     #  solve TRAN with FE
-    def stampingFE(self, step, stop):
-        nowTime = 0
+    def stampingFE(self, step, stop, start):
+        nowTime = start
         times = [nowTime]
         for device in self.devices:
             if not (device.type == 'D' or device.type == 'M'):
@@ -394,8 +458,12 @@ class Solve:
             x_ = self.tranValueFE[-1]
             xnoInterate = self.tranValueFE[-1]
             for src in self.devices:
+                if not nowTime == start:
+                    break
                 if src.type == 'V':
                     self.addVoltageToInit(src.name, src.value, x_)
+                elif (src.type =='C' or src.type == 'L') and nowTime == start:
+                    src.addIC(x_, self.appendLine)
             count = 0
             while abs(error) > 1e-3:
                 count += 1
@@ -414,6 +482,7 @@ class Solve:
                         stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadFE(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, t = nowTime, lastValue= x_)
                     else:
                         stampMatrixWithNonlinear, tmpRHS, RHSAppendLine = device.loadFE(stampMatrixWithNonlinear, tmpRHS, RHSAppendLine, step, t = nowTime, lastValue= xnoInterate)
+                print(stampMatrixWithNonlinear[1:, 1:])
                 x = np.linalg.solve(stampMatrixWithNonlinear[1:, 1:], tmpRHS[1:])
                 x = np.insert(x, 0, np.array([0]))
                 error = np.sum(x - x_)
@@ -423,12 +492,12 @@ class Solve:
             self.tranValueFE = np.append(self.tranValueFE, [x_.T], 0)
             nowTime += step
             times.append(nowTime)
-        print(self.tranValueFE)
+        # print(self.tranValueFE)
         # print('node map\n', self.nodeDict)
         # print('appendLine\n', self.appendLine)
         return self.tranValueFE, self.appendLine, times
 
-    def stampingTRWithStepControl(self, step, stop):
+    def stampingTRWithStepControl(self, step, stop, start):
         stopTime = stop
         # how to define the epsilon??
         epsilon = step * 10000
@@ -436,7 +505,7 @@ class Solve:
         times = [nowTime]
         # to get more points for the time step control
         fakeStep = step / 16
-        fakeTranValue, fakeAppendLine, fakeTimes = self.stampingTR(fakeStep, stop * 16)
+        fakeTranValue, fakeAppendLine, fakeTimes = self.stampingTR(fakeStep, stop * 16, start)
 
         self.clear()
         
@@ -465,8 +534,12 @@ class Solve:
             while True:
                 needChangeStepFlag = False
                 for src in self.devices:
+                    if not nowTime == start:
+                        break
                     if src.type == 'V':
                         self.addVoltageToInit(src.name, src.value, x_)
+                    elif (src.type =='C' or src.type == 'L') and nowTime == start:
+                        src.addIC(x_, self.appendLine)
                 count = 0
                 # N-R
                 while abs(error) > 1e-3:
@@ -528,8 +601,8 @@ class Solve:
         return self.tranValueTR, self.appendLine, times
 
     #  solve TRAN with TR
-    def stampingTR(self, step, stop):
-        nowTime = 0
+    def stampingTR(self, step, stop, start):
+        nowTime = start
         times = [nowTime]
         for device in self.devices:
             if not (device.type == 'D' or device.type == 'M'):
@@ -545,8 +618,12 @@ class Solve:
             x_ = self.tranValueTR[-1]
             xnoInterate = self.tranValueTR[-1]
             for src in self.devices:
+                if not nowTime == start:
+                    break
                 if src.type == 'V':
                     self.addVoltageToInit(src.name, src.value, x_)
+                elif (src.type =='C' or src.type == 'L') and nowTime == start:
+                    src.addIC(x_, self.appendLine)
             count = 0
             while abs(error) > 1e-3:
                 count += 1

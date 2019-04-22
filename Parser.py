@@ -131,10 +131,17 @@ class Parser:
             # DEC stands for stands for stands for decade variation decade variation decade variation decade variation decade variation decade variation, and , and ND = # points = # points = # points = # points per decade per decade .
             # OCT stands for stands for stands for octave variation octave variation octave variationoctave variation octave variation octave variation, and , and NO = # points = # points = # points = # points per octave per octaveper octave.
             # LIN stands for stands for stands for linear variation linear variation linear variation linear variation linear variation linear variation, and , and , and NP = # points. = # points. = # points. =
-            commandParams['variation'] = commandList[1]
-            commandParams['pointsSelect'] = commandList[2]
-            commandParams['fstart'] = stringToNum(commandList[3])
-            commandParams['fstop'] = stringToNum(commandList[4])
+            if commandList[1].isalpha():
+                commandParams['variation'] = commandList[1]
+                commandParams['pointsSelect'] = commandList[2]
+                commandParams['fstart'] = stringToNum(commandList[3])
+                commandParams['fstop'] = stringToNum(commandList[4])
+            else:
+                # use dec as default
+                commandParams['variation'] = 'LIN'
+                commandParams['pointsSelect'] = stringToNum(commandList[1])
+                commandParams['fstart'] = stringToNum(commandList[2])
+                commandParams['fstop'] = stringToNum(commandList[3])
         elif commandParams['type'] == 'TRAN':
             commandParams['tstep'] = stringToNum(commandList[1])
             commandParams['tstop'] = stringToNum(commandList[2])
@@ -241,13 +248,9 @@ class Parser:
         deviceParams = initDeviceParams(device[0][0], device[0], (device[1], device[2]))
         deviceParams['value'] = stringToNum(device[3])
 
-        mDict = {0: 'W', 1: 'L'}
-        for k, param in enumerate(device[6:]):
+        for k, param in enumerate(device[4:]):
             paramPair = param.split('=')
-            if len(paramPair) == 1:
-                deviceParams[mDict[k]] = paramPair[0]
-            else:
-                deviceParams[paramPair[0].strip()] = paramPair[1].strip()
+            deviceParams[paramPair[0].strip()] = stringToNum(paramPair[1].strip())
 
         # if len(device) > 4:
         self.deviceList.append(deviceParams)
@@ -317,6 +320,7 @@ class Parser:
 
     def parseEFGH(self, device):
         # deviceType = device[0][0]
+        print(device)
         deviceParams = initDeviceParams(device[0][0], device[0], (device[1], device[2]))
         self.updateNodeDict(device[1], device[2])
         # name = device[0]

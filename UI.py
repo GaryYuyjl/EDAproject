@@ -35,11 +35,11 @@ class GUI(QMainWindow):
                 
     def updateButtonStatus(self):
         if (not hasattr(self, 'mySpice')) or len(self.mySpice.deviceList) == 0:
-            self.solveTRANButton.setDisabled(True)
-            self.solveDCButton.setDisabled(True)
+            # self.solveTRANButton.setDisabled(True)
+            self.printValueButton.setDisabled(True)
         else:
-            self.solveTRANButton.setEnabled(True)
-            self.solveDCButton.setEnabled(True)
+            # self.solveTRANButton.setEnabled(True)
+            self.printValueButton.setEnabled(True)
 
     def initUI(self):              
 
@@ -65,40 +65,40 @@ class GUI(QMainWindow):
         grid.addWidget(self.consoleText, 1, 1)
 
 
-        exitAction = QAction('Exit', self)
+        exitAction = QAction(QIcon('./icon/exit.png'),'Exit', self)
         exitAction.setShortcut('Ctrl+Q')
         exitAction.setStatusTip('Exit application')
         exitAction.triggered.connect(self.close)
 
-        saveFile = QAction('Save File', self)
+        saveFile = QAction(QIcon('./icon/save.png'), 'Save File', self)
         saveFile.setShortcut('Ctrl+S')
         saveFile.setStatusTip('Save File')
         saveFile.triggered.connect(self.saveFile)
 
-        openFile = QAction('Open File', self)
+        openFile = QAction(QIcon('./icon/open.png'),'Open File', self)
         openFile.setShortcut('Ctrl+O')
         openFile.setStatusTip('Open File')
         openFile.triggered.connect(self.openFile)
 
-        parse = QAction('Parse', self)
+        parse = QAction(QIcon('./icon/parse.png'), 'Parse', self)
         parse.setShortcut('Ctrl+P')
         parse.setStatusTip('Parse')
         parse.triggered.connect(self.parse)
 
-        solveDC = QAction('SolveDC', self)
-        solveDC.setShortcut('Ctrl+D')
-        solveDC.setStatusTip('SolveDC')
-        solveDC.triggered.connect(self.solveDC)
-        self.solveDCButton = solveDC
+        printValue = QAction(QIcon('./icon/print.png'),'printValue', self)
+        printValue.setShortcut('Ctrl+D')
+        printValue.setStatusTip('printValue')
+        printValue.triggered.connect(self.printValue)
+        self.printValueButton = printValue
 
-        solveTRAN = QAction('SolveTRAN', self)
-        solveTRAN.setShortcut('Ctrl+T')
-        solveTRAN.setStatusTip('SolveTRAN')
-        solveTRAN.triggered.connect(self.solveTRAN)
-        self.statusBar()
-        self.solveTRANButton = solveTRAN
+        # solveTRAN = QAction('SolveTRAN', self)
+        # solveTRAN.setShortcut('Ctrl+T')
+        # solveTRAN.setStatusTip('SolveTRAN')
+        # solveTRAN.triggered.connect(self.solveTRAN)
+        # self.statusBar()
+        # self.solveTRANButton = solveTRAN
  
-        clearConsole = QAction('clearConsole', self)
+        clearConsole = QAction(QIcon('./icon/clear.png'), 'clearConsole', self)
         clearConsole.setShortcut('Ctrl+D')
         clearConsole.setStatusTip('clearConsole')
         clearConsole.triggered.connect(self.clearConsole)
@@ -110,8 +110,8 @@ class GUI(QMainWindow):
         toolbar.addAction(saveFile)
         toolbar.addAction(openFile)
         toolbar.addAction(parse)
-        toolbar.addAction(solveDC)
-        toolbar.addAction(solveTRAN)
+        toolbar.addAction(printValue)
+        # toolbar.addAction(solveTRAN)
 
         menubar = self.menuBar()
         fileMenu = menubar.addMenu('&File')
@@ -120,8 +120,8 @@ class GUI(QMainWindow):
         fileMenu.addAction(saveFile)
         fileMenu.addAction(openFile)
         simulationMenu.addAction(parse)
-        simulationMenu.addAction(solveDC)
-        simulationMenu.addAction(solveTRAN)
+        simulationMenu.addAction(printValue)
+        # simulationMenu.addAction(solveTRAN)
         # toolbar = self.addToolBar('Exit')
         # toolbar.addAction(exitAction)
          
@@ -129,8 +129,8 @@ class GUI(QMainWindow):
         self.setWindowTitle('Python Spice')   
         self.show()
          
-        sys.stdout = Stream(newText = self.outputWritten)  
-        sys.stderr = Stream(newText = self.outputWritten)  
+        # sys.stdout = Stream(newText = self.outputWritten)  
+        # sys.stderr = Stream(newText = self.outputWritten)  
         self.updateButtonStatus()
 
     def outputWritten(self, text):  
@@ -144,6 +144,7 @@ class GUI(QMainWindow):
         self.consoleText.setPlainText('CONSOLE. \n')
 
     def parse(self):
+        self.mySpice.clean()
         text = self.textEdit.toPlainText()
         # myParser = Parser(text, self.nodeDict, self.deviceList, self.commandList)
         # myParser.startParser()
@@ -151,15 +152,23 @@ class GUI(QMainWindow):
         self.consoleText.insertPlainText('finish parse\n')
         self.updateButtonStatus()
         
-    def solveDC(self):
-        self.mySpice.solve()
-        self.mySpice.plotDCWithMatplotlib(0, -1, -0.01)
+    def printValue(self):
+        # self.mySpice.solve()
+        if len(self.mySpice.DCValue):
+            print('plotdc')
+            self.mySpice.plotDCWithMatplotlib()
+        elif len(self.mySpice.tranValueBE) or len(self.mySpice.tranValueFE) or len(self.mySpice.tranValueTR):
+            print('plottran')
+            self.mySpice.plotTranWithMatplotlib()
+        elif len(self.mySpice.ACValue):
+            print('plotac')
+            self.mySpice.plotACWithMatplotlib()
 
-    def solveTRAN(self):
-        self.mySpice.solveTran(method='BE')
-        self.mySpice.solveTran(method='FE')
-        self.mySpice.solveTran(method='TR')
-        self.mySpice.plotTranWithMatplotlib()
+    # def solveTRAN(self):
+    #     self.mySpice.solveTran(method='BE')
+    #     self.mySpice.solveTran(method='FE')
+    #     self.mySpice.solveTran(method='TR')
+    #     self.mySpice.plotTranWithMatplotlib()
 
 if __name__ == '__main__':
      

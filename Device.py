@@ -1,7 +1,7 @@
 from Util import *
 import numpy as np
 # father class of all devices
-class SuperDevice:
+class Devices:
     def __init__(self, name, connectionPoints, _type):
         self.connectionPoints = connectionPoints
         self.NPlus = self.connectionPoints[0]
@@ -32,7 +32,7 @@ class SuperDevice:
     def loadFE(self):
         pass
 
-class Diode(SuperDevice):
+class Diode(Devices):
     def __init__(self, name, connectionPoints, _type):
         super().__init__(name, connectionPoints, _type)
         self.alpha = 40
@@ -81,7 +81,7 @@ class Diode(SuperDevice):
     def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return RHS, appendLine
 
-class Mosfet(SuperDevice):
+class Mosfet(Devices):
     def __init__(self, name, connectionPoints, _type, mname, W = None, L = None):
         super().__init__(name, connectionPoints, _type)
         self.mname = mname
@@ -94,14 +94,14 @@ class Mosfet(SuperDevice):
             self.k = 115e-6
             self.W = 2e-6
             self.L = 1e-6
-            self.vt = 0
+            self.vt = 0.4
             self.lamda = 0.06
         elif mname[0] == 'P':
             self.Is = -2e-6
             self.k = -30e-6
             self.W = 4e-6
             self.L = 1e-6
-            self.vt = 0
+            self.vt = -0.43
             self.lamda = -0.1
         if not W == None:
             self.W = stringToNum(W)
@@ -124,7 +124,8 @@ class Mosfet(SuperDevice):
                 vds = lastValue[self.D] - lastValue[self.S]
             if vgs <= 1 * self.vt:
                 # print(1, self.name, vds, vgs, self.vt, lastValue)
-                gm = self.Is * np.exp((vgs - self.vt) / (1.5 * 26e-3)) / (1.5 * 26e-3)
+                # gm = self.Is * np.exp((vgs - self.vt) / (1.5 * 26e-3)) / (1.5 * 26e-3)
+                gm = 0
                 gds = 0
                 # ids = 0
                 # ids = self.Is * np.exp(vgs / 26e-3 / 1.5) * (1 - np.exp(-vds / 26e-3)) * (1 + self.lamda * vds)
@@ -144,7 +145,6 @@ class Mosfet(SuperDevice):
                 gm = self.k * self.W / self.L * 2 * (vgs - self.vt) * (1 + self.lamda * vds)
                 gds = self.k * self.W / self.L * (vgs - self.vt) ** 2 * self.lamda
                 ids = self.k * self.W / self.L * (vgs - self.vt) ** 2 * (1 + self.lamda * vds)
-
         elif self.mname[0] == 'P':
             if vds >= 0:
                 self.D, self.S = self.S, self.D
@@ -153,10 +153,12 @@ class Mosfet(SuperDevice):
             if vgs >= 1 * self.vt:
                 # print(4, self.name, vds, vgs, self.vt, lastValue)
                 # ids = 0
-                gm = -self.Is * np.exp((-vgs + self.vt) / (1.5 * 26e-3)) / (1.5 * 26e-3)
+                # gm = -self.Is * np.exp((-vgs + self.vt) / (1.5 * 26e-3)) / (1.5 * 26e-3)
+                gm = 0
                 gds = 0
-                ids = self.Is * np.exp((-vgs + self.vt) / (1.5 * 26e-3))
-                # print(gm, gds, ids)
+                # ids = self.Is * np.exp((-vgs + self.vt) / (1.5 * 26e-3))
+                ids = 0
+                # # print(gm, gds, ids)
             elif vds >= vgs - self.vt:
                 # print(5, self.name, vds, vgs, self.vt, lastValue)
                 # if vds >= 0:
@@ -167,12 +169,12 @@ class Mosfet(SuperDevice):
                 gm = self.k * self.W / self.L * 2 * vds * (1 + self.lamda * vds)
                 ### 重新算一下
                 gds = self.k * self.W / self.L * (2 * (vgs - self.vt) + (-4 * self.lamda * (vgs - self.vt) - 2) * vds + 3 * self.lamda * vds ** 2)
-                ids = self.Is + self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2) * (1 + self.lamda * vds)
+                ids = self.k * self.W / self.L * (2 * (vgs - self.vt) * vds - vds ** 2) * (1 + self.lamda * vds)
             elif vds < vgs - self.vt:
                 # print(6, self.name, vds, vgs, self.vt, lastValue)
                 gm = self.k * self.W / self.L * 2 * (-vgs + self.vt) * (1 + self.lamda * vds)
                 gds = self.k * self.W / self.L * (vgs - self.vt) ** 2 * self.lamda
-                ids = self.Is + self.k * self.W / self.L * (-vgs + self.vt) ** 2 * (1 + self.lamda * vds)
+                ids = self.k * self.W / self.L * (-vgs + self.vt) ** 2 * (1 + self.lamda * vds)
         stampMatrix[self.D][self.D] += gds
         stampMatrix[self.S][self.D] -= gds
         stampMatrix[self.D][self.S] -= gds + gm
@@ -264,6 +266,9 @@ class Mosfet(SuperDevice):
         RHS[self.S][0] += jds
         return stampMatrix, RHS, appendLine
 
+    def loadAC(self, stampMatrix, RHS, appendLine,  freq, t = 0, lastValue=[], appointValue = None):
+        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
+
     def loadBE(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], appointValue = None):
         return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
 
@@ -273,7 +278,7 @@ class Mosfet(SuperDevice):
     def loadTR(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], appointValue = None):
         return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
 
-class Resistor(SuperDevice):
+class Resistor(Devices):
     def __init__(self, name, connectionPoints, value, _type):
         super().__init__(name, connectionPoints, _type)
         self.value = value
@@ -330,10 +335,15 @@ class Resistor(SuperDevice):
     def loadTR(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], appointValue = None):
         return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
 
-class Capacitor(SuperDevice):
-    def __init__(self, name, connectionPoints, value, _type):
+class Capacitor(Devices):
+    def __init__(self, name, connectionPoints, value, _type, ic = 0):
         super().__init__(name, connectionPoints, _type)
         self.value = value
+        self.ic = ic
+    
+    def addIC(self, lastValue, appendLine):
+        lastValue[self.NPlus] += lastValue[self.NMinus] + self.ic
+        return
 
     def load(self, stampMatrix, RHS, appendLine, lastValue=[]):
         stampMatrix[self.NPlus][self.NPlus] += self.value * 0
@@ -360,10 +370,10 @@ class Capacitor(SuperDevice):
         return stampMatrix, RHS, appendLine
 
     def loadAC(self, stampMatrix, RHS, appendLine,  freq, t = 0, lastValue=[], appointValue = None):
-        stampMatrix[self.NPlus][self.NPlus] += self.value * 1j * freq
-        stampMatrix[self.NPlus][self.NMinus] -= self.value * 1j * freq
-        stampMatrix[self.NMinus][self.NPlus] -= self.value * 1j * freq
-        stampMatrix[self.NMinus][self.NMinus] += self.value * 1j * freq
+        stampMatrix[self.NPlus][self.NPlus] += self.value * 1j * freq * np.pi
+        stampMatrix[self.NPlus][self.NMinus] -= self.value * 1j * freq * np.pi
+        stampMatrix[self.NMinus][self.NPlus] -= self.value * 1j * freq * np.pi
+        stampMatrix[self.NMinus][self.NMinus] += self.value * 1j * freq * np.pi
         return stampMatrix, RHS, appendLine
 
     '''TRAN BE
@@ -476,10 +486,15 @@ class Capacitor(SuperDevice):
         appendLine[self.name] = index
         return stampMatrix, RHS, appendLine
 
-class Inductor(SuperDevice):
-    def __init__(self, name, connectionPoints, value, _type):
+class Inductor(Devices):
+    def __init__(self, name, connectionPoints, value, _type, ic=0):
         super().__init__(name, connectionPoints, _type)
         self.value = value
+        self.ic = ic
+
+    def addIC(self, lastValue, appendLine):
+        lastValue[appendLine[self.name]] += self.ic
+        return
 
     def load(self, stampMatrix, RHS, appendLine, lastValue=[]):
         index = stampMatrix.shape[0]
@@ -499,10 +514,10 @@ class Inductor(SuperDevice):
         index = stampMatrix.shape[0]
         stampMatrix = expandMatrix(stampMatrix, 1)
 
-        stampMatrix[self.NPlus][index] += 1j * freq * self.value
-        stampMatrix[self.NMinus][index] -= 1j * freq * self.value
-        stampMatrix[index][self.NPlus] += 1j * freq * self.value
-        stampMatrix[index][self.NMinus] -= 1j * freq * self.value
+        stampMatrix[self.NPlus][index] += 1j * freq * self.value * np.pi
+        stampMatrix[self.NMinus][index] -= 1j * freq * self.value * np.pi
+        stampMatrix[index][self.NPlus] += 1j * freq * self.value * np.pi
+        stampMatrix[index][self.NMinus] -= 1j * freq * self.value * np.pi
         stampMatrix[index][index] -= self.value * 1j
         RHS = np.vstack((RHS, np.array([0]))) # add vc
 
@@ -617,7 +632,7 @@ class Inductor(SuperDevice):
             RHS = np.vstack((RHS, add)) # add vc
         return stampMatrix, RHS, appendLine
 
-class ISource(SuperDevice):
+class ISource(Devices):
     def __init__(self, name, connectionPoints, value, _type):
         super().__init__(name, connectionPoints, _type)
         self.value = value
@@ -644,7 +659,8 @@ class ISource(SuperDevice):
             RHS[self.NPlus][0] -= appointValue
             RHS[self.NMinus][0] += appointValue
         return stampMatrix, RHS, appendLine
-
+    def loadAC(self, stampMatrix, RHS, appendLine,  freq, t = 0, lastValue=[], appointValue = None):
+        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
     def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         if appointValue == None:
             appointValue = self.value
@@ -657,7 +673,7 @@ class ISource(SuperDevice):
         return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, appointValue)
 
 
-class VSource(SuperDevice):
+class VSource(Devices):
     def __init__(self, name, connectionPoints, value, _type, sin, pulse, const):
         super().__init__(name, connectionPoints, _type)
         self.value = value
@@ -667,10 +683,22 @@ class VSource(SuperDevice):
         if len(sin):
             self.sin = True
             self.sin_v0 = stringToNum(sin[0])
-            self.sin_va = stringToNum(sin[1])
-            self.sin_freq = stringToNum(sin[2])
-            self.sin_td = stringToNum(sin[3])
-            self.sin_theta = stringToNum(sin[4])
+            if len(sin) < 2:
+                self.sin_va = 0
+            else:
+                self.sin_va = stringToNum(sin[1])
+            if len(sin) < 3:
+                self.sin_freq = 0
+            else:
+                self.sin_freq = stringToNum(sin[2])
+            if len(sin) < 4:
+                self.sin_td = 0
+            else:
+                self.sin_td = stringToNum(sin[3])
+            if len(sin) < 5:
+                self.sin_theta = 0
+            else:
+                self.sin_theta = stringToNum(sin[4])
         if len(pulse):
             self.pulse = True
             self.pulse_v1 = stringToNum(pulse[0])
@@ -730,7 +758,8 @@ class VSource(SuperDevice):
 
             appendLine[self.name] = index
         return stampMatrix, RHS, appendLine
-
+    def loadAC(self, stampMatrix, RHS, appendLine,  freq, t = 0, lastValue=[], appointValue = None):
+        return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
     def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         if appointValue == None:
             if self.sin == True:
@@ -739,6 +768,7 @@ class VSource(SuperDevice):
                 else:
                     appointValue = self.sin_v0 + self.sin_va * np.exp(-(t - self.sin_td) * self.sin_theta) * np.sin(2 * np.pi * self.sin_freq * (t - self.sin_td))
             elif self.pulse:
+                # print(t, self.pulse_td, self.pulse_tr, self.pulse_pw, self.pulse_tf, self.pulse_v1, self.pulse_v2)
                 if t <= self.pulse_td:
                     appointValue = self.pulse_v1
                 else:
@@ -757,6 +787,7 @@ class VSource(SuperDevice):
                             appointValue = (self.pulse_v2 - self.pulse_v1) / self.pulse_tf * (self.pulse_tf + self.pulse_pw + self.pulse_tr - time) + self.pulse_v1
                     else:
                         appointValue = self.pulse_v1
+                    # print(t, time, appointValue)
             elif self.const:
                 appointValue = self.const_v
             else:
@@ -819,7 +850,7 @@ class VSource(SuperDevice):
     def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.loadBE(stampMatrix, RHS, appendLine, step, t, lastValue, appointValue)
 
-class VCCS(SuperDevice):
+class VCCS(Devices):
     def __init__(self, name, connectionPoints, value, controlConnectionPoints, _type):
         super().__init__(name, connectionPoints, _type)
         self.value = value
@@ -841,6 +872,10 @@ class VCCS(SuperDevice):
         stampMatrix[self.NMinus][self.NCPlus] -= self.value
         stampMatrix[self.NMinus][self.NCMinus] += self.value
         return stampMatrix, RHS, appendLine
+    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, appointValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
+    def loadAC(self, stampMatrix, RHS, appendLine,  freq, t = 0, lastValue=[], appointValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
     def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
     def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
@@ -869,7 +904,7 @@ class VCCS(SuperDevice):
     def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
 
-class VCVS(SuperDevice):
+class VCVS(Devices):
     def __init__(self, name, connectionPoints, value, controlConnectionPoints, _type):
         super().__init__(name, connectionPoints, _type)
         self.value = value
@@ -904,6 +939,10 @@ class VCVS(SuperDevice):
         RHS = np.vstack((RHS, np.array([0])))
         appendLine[self.name] = index
         return stampMatrix, RHS, appendLine
+    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, appointValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
+    def loadAC(self, stampMatrix, RHS, appendLine,  freq, t = 0, lastValue=[], appointValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
     def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
     def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
@@ -942,7 +981,7 @@ class VCVS(SuperDevice):
     def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
 
-class CCCS(SuperDevice):
+class CCCS(Devices):
     def __init__(self, name, connectionPoints, value, controlConnectionPoints, control, controlValue, _type):
         super().__init__(name, connectionPoints, _type)
         self.value = value
@@ -986,6 +1025,10 @@ class CCCS(SuperDevice):
             stampMatrix[self.NMinus][index] -= self.value
 
         return stampMatrix, RHS, appendLine
+    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, appointValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
+    def loadAC(self, stampMatrix, RHS, appendLine,  freq, t = 0, lastValue=[], appointValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
     def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
     def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
@@ -1034,7 +1077,7 @@ class CCCS(SuperDevice):
     def loadTRRHS(self, stampMatrix, RHS, appendLine, step, lastValue):
         return self.loadBERHS(stampMatrix, RHS, appendLine, step, lastValue)
 
-class CCVS(SuperDevice):
+class CCVS(Devices):
     def __init__(self, name, connectionPoints, value, controlConnectionPoints, control, controlValue, _type):
         super().__init__(name, connectionPoints, _type)
         self.value = value
@@ -1094,7 +1137,10 @@ class CCVS(SuperDevice):
             RHS = np.vstack((RHS, np.array([0]))) # add vc
             appendLine[self.name] = indexK
         return stampMatrix, RHS, appendLine
-
+    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, appointValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
+    def loadAC(self, stampMatrix, RHS, appendLine,  freq, t = 0, lastValue=[], appointValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
     def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         return self.load(stampMatrix, RHS, appendLine, lastValue)
     def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
