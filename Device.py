@@ -51,6 +51,9 @@ class Diode(Devices):
         RHS[self.NMinus][0] -= -(np.exp(self.alpha * v_tMinush) - 1) + self.alpha * np.exp(self.alpha * v_tMinush) * v_tMinush
         return stampMatrix, RHS, appendLine
 
+    def loadDC(self, stampMatrix, RHS, appendLine, lastValue=None, appointValue = None):
+        return self.load(stampMatrix, RHS, appendLine, lastValue)
+
     def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
         v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
 
@@ -308,15 +311,6 @@ class Resistor(Devices):
         stampMatrix[self.NMinus][self.NMinus] += 1 / self.value
         return stampMatrix, RHS, appendLine
 
-    # def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
-    #     if appointValue == None:
-    #         appointValue = self.value
-    #     stampMatrix[self.NPlus][self.NPlus] += 1 / self.value
-    #     stampMatrix[self.NPlus][self.NMinus] -= 1 / self.value
-    #     stampMatrix[self.NMinus][self.NPlus] -= 1 / self.value
-    #     stampMatrix[self.NMinus][self.NMinus] += 1 / self.value
-    #     return stampMatrix, RHS, appendLine
-
     def loadAC(self, stampMatrix, RHS, appendLine,  freq, t = 0, lastValue=[], appointValue = None):
         return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
 
@@ -334,6 +328,144 @@ class Resistor(Devices):
 
     def loadTR(self, stampMatrix, RHS, appendLine,  step, t = 0, lastValue=[], appointValue = None):
         return self.loadDC(stampMatrix, RHS, appendLine, lastValue, appointValue)
+
+class Memresistor(Devices):
+    def __init__(self, name, connectionPoints, _type, ron=100, roff=100000, rinit=95000):
+        super().__init__(name, connectionPoints, _type)
+        self.ron = ron
+        self.roff = roff
+        self.rinit = rinit
+    
+    '''TRAN BE
+        +    -    i   w  |  RHS
+                         |
+    +   0    0    1   1  |   0
+                         |
+    -   0    0    -1  -1 |   0
+                         |
+    br 1/M(w(t-h))  -1/M(w(t-h))  -1  0 |  0
+                         |
+    w                  1 | w(t-h)+hKi(t-h)
+                         |
+    '''
+
+    def loadBE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        indexi = stampMatrix.shape[0]
+        stampMatrix = expandMatrix(stampMatrix, 1)
+        indexw = stampMatrix.shape[0]
+        stampMatrix = expandMatrix(stampMatrix, 1)
+
+        stampMatrix[self.NPlus][indexi] += 1
+        stampMatrix[self.NMinus][indexi] -= 1
+        stampMatrix[indexi][indexi] -= 1
+        stampMatrix[indexw][indexw] += 1
+
+        miu = 1000
+        D = 1
+        K = miu * self.ron / D / D
+        if len(lastValue):
+            v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
+            i_tMinush = lastValue[indexi]
+            w_tMinush = lastValue[indexw]
+            Mw_tMinush = self.ron * w_tMinush + self.roff * (1 - w_tMinush)
+            # print('Mw_tMinush',w_tMinush, Mw_tMinush)
+            stampMatrix[indexi][self.NPlus] += 1 / Mw_tMinush
+            stampMatrix[indexi][self.NMinus] -= 1 / Mw_tMinush
+            stampMatrix[indexw][indexi] -= step * K
+
+            add = np.array([0])
+            RHS = np.vstack((RHS, add))
+            add = np.array([w_tMinush])
+            RHS = np.vstack((RHS, add)) 
+        appendLine[self.name] = indexi
+        appendLine['w' + self.name] = indexw
+        return stampMatrix, RHS, appendLine
+
+    '''TRAN FE
+        +    -    i   w  |  RHS
+                         |
+    +   0    0    1   1  |   0
+                         |
+    -   0    0    -1  -1 |   0
+                         |
+    br 1/M(w(t-h))  -1/M(w(t-h))  -1  0 |  0
+                         |
+    w                  1 | w(t-h)+hKi(t-h)
+                         |
+    '''
+    def loadFE(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        indexi = stampMatrix.shape[0]
+        stampMatrix = expandMatrix(stampMatrix, 1)
+        indexw = stampMatrix.shape[0]
+        stampMatrix = expandMatrix(stampMatrix, 1)
+
+        stampMatrix[self.NPlus][indexi] += 1
+        stampMatrix[self.NMinus][indexi] -= 1
+        stampMatrix[indexi][indexi] -= 1
+        stampMatrix[indexw][indexw] += 1
+
+        miu = 1000
+        D = 1
+        K = miu * self.ron / D / D
+        if len(lastValue):
+            v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
+            i_tMinush = lastValue[indexi]
+            w_tMinush = lastValue[indexw]
+            Mw_tMinush = self.ron * w_tMinush + self.roff * (1 - w_tMinush)
+            # print('Mw_tMinush',w_tMinush, Mw_tMinush)
+            stampMatrix[indexi][self.NPlus] += 1 / Mw_tMinush
+            stampMatrix[indexi][self.NMinus] -= 1 / Mw_tMinush
+            # stampMatrix[indexw][indexi] -= step * K
+
+            add = np.array([0])
+            RHS = np.vstack((RHS, add))
+            add = np.array([w_tMinush + step * K * i_tMinush])
+            RHS = np.vstack((RHS, add)) 
+        appendLine[self.name] = indexi
+        appendLine['w' + self.name] = indexw
+        return stampMatrix, RHS, appendLine
+
+    '''TRAN TR
+        +    -    i   |  RHS
+                      |
+    +   0    0    1   |   0
+                      |
+    -   1/M(w(t-h))   -1/M(w(t-h))   -1  |   0
+                      |
+    br 0    0  -0.5hk |  0.5hki(t-h)+w(t-h)
+                      |
+    '''
+    def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
+        indexi = stampMatrix.shape[0]
+        stampMatrix = expandMatrix(stampMatrix, 1)
+        indexw = stampMatrix.shape[0]
+        stampMatrix = expandMatrix(stampMatrix, 1)
+
+        stampMatrix[self.NPlus][indexi] += 1
+        stampMatrix[self.NMinus][indexi] -= 1
+        stampMatrix[indexi][indexi] -= 1
+        stampMatrix[indexw][indexw] += 1
+
+        miu = 1e-14
+        D = 10e-9
+        K = miu * self.ron / D / D
+        if len(lastValue):
+            v_tMinush = lastValue[self.NPlus] - lastValue[self.NMinus]
+            i_tMinush = lastValue[indexi]
+            w_tMinush = lastValue[indexw]
+            Mw_tMinush = self.ron * w_tMinush + self.roff * (1 - w_tMinush)
+            # print('Mw_tMinush',w_tMinush, Mw_tMinush)
+            stampMatrix[indexi][self.NPlus] += 1 / Mw_tMinush
+            stampMatrix[indexi][self.NMinus] -= 1 / Mw_tMinush
+            stampMatrix[indexw][indexi] -= 0.5 * step * K
+
+            add = np.array([0])
+            RHS = np.vstack((RHS, add))
+            add = np.array([0.5 * step * K * i_tMinush + w_tMinush])
+            RHS = np.vstack((RHS, add)) 
+        appendLine[self.name] = indexi
+        appendLine['w' + self.name] = indexw
+        return stampMatrix, RHS, appendLine
 
 class Capacitor(Devices):
     def __init__(self, name, connectionPoints, value, _type, ic = 0):
@@ -607,7 +739,7 @@ class Inductor(Devices):
                       |
     -   0    0   -1   |   0
                       |
-    br  -1   1   2L/h |  2L/h*i(t-h)+i(t-h)
+    br  -1   1   2L/h |  2L/h*i(t-h)+v(t-h)
                       |
     '''
     def loadTR(self, stampMatrix, RHS, appendLine, step, t = 0, lastValue=[], appointValue = None):
@@ -1058,10 +1190,6 @@ class CCCS(Devices):
             appendLine[self.control] = index
 
             RHS = np.vstack((RHS, np.array([self.controlValue]))) # add vc
-        # else:
-            # index = appendLine[self.control]
-            # stampMatrix[self.NPlus][index] += self.value
-            # stampMatrix[self.NMinus][index] -= self.value
 
         return RHS, appendLine
 

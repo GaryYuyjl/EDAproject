@@ -129,8 +129,8 @@ class GUI(QMainWindow):
         self.setWindowTitle('Python Spice')   
         self.show()
          
-        # sys.stdout = Stream(newText = self.outputWritten)  
-        # sys.stderr = Stream(newText = self.outputWritten)  
+        sys.stdout = Stream(newText = self.outputWritten)  
+        sys.stderr = Stream(newText = self.outputWritten)  
         self.updateButtonStatus()
 
     def outputWritten(self, text):  

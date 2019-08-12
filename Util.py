@@ -2,12 +2,16 @@ import re
 import math
 import numpy as np
 exampleNetlist = """*netlist example 1
-V2 1 0 -0.7
-V1 2 0 0.4
-M1 2 1 0 0 PMOS
-
-.plot DC I(V1)
-.DC V1 0 -1 -0.01 V2 0 -1 -0.1
+*V2 1 0 -0.7
+*V1 2 0 0.4
+v1 1 0 1 1 sin (0 1 1)
+*M1 2 1 0 0 PMOS
+Z1 1 0
+*R 1 0 1
+*.plot DC I(V1)
+*.DC V1 0 -1 -0.01 V2 0 -1 -0.1
+.tran 0.01 5 0.0
+.plot tran V(1) I(Z1)
 .end
 """
 expoDic = {
@@ -23,11 +27,12 @@ expoDic = {
 }
 
 parseType = {
-    'R': 0,'L': 0,'C': 0, #RLC
+    'R': 0,'L': 0,'C': 0,  #RLC
     'E': 1,'F': 1,'G': 1,'H': 1, # Control Source
     'D': 2, # Diode
     'V': 3, 'I': 3, # source
-    'M': 4
+    'M': 4,
+    'Z': 5,
 }
 
 # give all devices a initial status
@@ -66,16 +71,14 @@ def initDeviceParams(deviceType, deviceName = None, connectionPoints = None):
             'deviceType': deviceType,
             'name': deviceName,
             'connectionPoints': connectionPoints, # d g s b
-            # 'MNAME': None,
-            # 'L': None,
-            # 'W': None,
-            # 'AD': None,
-            # 'AS': None,
-            # 'PD': None,
-            # 'PS': None,
-            # 'NRD': None,
-            # 'NRS': None
         }
+    elif parseType[deviceType] == 5:
+        return{
+            'deviceType': deviceType,
+            'name': deviceName,
+            'connectionPoints': connectionPoints, 
+        }
+
 
 # parse the numbers written in spice's style (like 1k, 1m ... )
 def stringToNum(string):
@@ -131,4 +134,6 @@ class TranError(Exception):
     pass
 
 class DCError(Exception):
+    pass
+class ACError(Exception):
     pass

@@ -1,5 +1,3 @@
-# 行首能为空格？
-# 字符串转数字
 import re
 from Util import *
 class Parser:
@@ -25,7 +23,7 @@ class Parser:
                 
     def startParser(self):
         # print('Start parser now. \n')
-        # try:
+        try:
             netlistList = self.netlist.splitlines()
             # handle the + continue line
             # print('Read netlist. \n')
@@ -61,18 +59,18 @@ class Parser:
             if not self.hasGround:
                 raise NoGroundError('No ground!')
             return self.nodeDict, self.deviceList, self.commandList
-        # except NoGroundError as ng:
-        #     self.clean()
-        #     print('ERROR NoGroundError', ng)
-        #     return self.nodeDict, self.deviceList, self.commandList
-        # except NoEnddError as ne:
-        #     self.clean()
-        #     print('ERROR NoEnddError', ne)
-        #     return self.nodeDict, self.deviceList, self.commandList
-        # except Exception as e:
-        #     self.clean()
-        #     print('Something ERROR', e)
-        #     return self.nodeDict, self.deviceList, self.commandList
+        except NoGroundError as ng:
+            self.clean()
+            print('ERROR NoGroundError', ng)
+            return self.nodeDict, self.deviceList, self.commandList
+        except NoEnddError as ne:
+            self.clean()
+            print('ERROR NoEnddError', ne)
+            return self.nodeDict, self.deviceList, self.commandList
+        except Exception as e:
+            self.clean()
+            print('Something ERROR', e)
+            return self.nodeDict, self.deviceList, self.commandList
 
     def clean(self):
         self.nodeDict = {}
@@ -117,6 +115,8 @@ class Parser:
             self.parseVI(line)
         elif deviceParseType == 4:
             self.parseM(line)
+        elif deviceParseType == 5:
+            self.parseZ(line)
         
 
     def handleCommand(self, _line):
@@ -255,6 +255,23 @@ class Parser:
         # if len(device) > 4:
         self.deviceList.append(deviceParams)
 
+    def parseZ(self, device):
+        device = device.strip()
+        device = stripSpaceAroundEqualSign(device)
+        device = device.split()
+
+        self.updateNodeDict(device[1], device[2])
+        # print(device)
+        deviceParams = initDeviceParams(device[0][0], device[0], (device[1], device[2]))
+        mDict = {0: 'LEVEL', 1: 'RON', 2:'ROFF', 3:'RINIT'}
+        for k, param in enumerate(device[3:]):
+            paramPair = param.split('=')
+            if len(paramPair) == 1:
+                deviceParams[mDict[k]] = paramPair[0]
+            else:
+                deviceParams[paramPair[0].strip()] = paramPair[1].strip()
+
+        self.deviceList.append(deviceParams)
 
     def parseD(self, device):
         deviceType = device[0][0]
